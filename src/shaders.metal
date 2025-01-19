@@ -27,6 +27,7 @@ struct sphere {
 struct camera {
     packed_float3 camera_center;
     float focal_length;
+    packed_float4 rotation;
     packed_float2 viewport;
 };
 
@@ -73,6 +74,22 @@ float4 ray_sphere_intersect (const ray beam, const sphere light) {
         return float4(-1, -1, -1, -1);
     }
 };
+
+float4 quat_inv(const float4 quat) {
+    return float4(-quat.xyz, quat.w);
+}
+
+float4 quat_dot (const float4 q1, const float4 q2) {
+    float s = q1.w * q2.w - dot(q1.xyz, q2.xyz);
+    float3 v = cross(q1.xyz, q2.xyz) + q1.w * q2.xyz + q2.w * q1.xyz;
+    return float4(v, s);
+}
+
+float3 quat_mult (const float3 vec, const float4 quat) {
+    float4 r = quat_dot(quat_dot(quat_inv(quat), float4(vec.xyz, 0)), quat);
+    return r.xyz;
+}
+
 
 float random (float2 st) {
     return (fract(sin(dot(st.xy,
@@ -222,37 +239,34 @@ kernel void compute_shader (
     const device rect *mirrors [[ buffer(1) ]],
     const device camera *camera [[ buffer(2) ]],
     const device bool *materials [[ buffer(3) ]],
+    const device int *m_count [[ buffer(4) ]],
     //threadgroup atomic_int *shared [[ threadgroup(0) ]],
     uint2 tgid [[ threadgroup_position_in_grid ]],
     uint2 gid [[ thread_position_in_threadgroup ]],
-    uint2 texid [[ thread_position_in_grid ]]
+    uint2 texid [[ thread_position_in_grid ]],
+    uint2 dimensions [[ threads_per_threadgroup ]]
 ) {
     //96 is constant for view_height divided by 8
     //Double check this code, maybe supposed to be view_width / 8
-    uint pixel_buffer_index = tgid.x + tgid.y * 32;
+    uint pixel_buffer_index = tgid.x + tgid.y * 128;
     uint2 pixel = pixel_update_buffer[pixel_buffer_index];
 
-    uint flat_index = gid.x + 16 * gid.y;
-    uint pixel_number = flat_index / 224;
-    uint pixel_y_add = pixel_number % 2;
-    uint pixel_x_add = pixel_number / 2;
+    uint total_threads = dimensions.x * dimensions.y;
+
+    uint flat_index = gid.x + dimensions.x * gid.y;
+    uint pixel_number = flat_index / (total_threads / 16);
+    uint pixel_y_add = pixel_number % 4;
+    uint pixel_x_add = pixel_number / 4;
     pixel = pixel + uint2(pixel_x_add, pixel_y_add);
 
     auto device const &cam = camera[0];
-
-    //threadgroup atomic_int &pixel_red = shared[0];
-    //threadgroup atomic_int &pixel_green = shared[1];
-    //threadgroup atomic_int &pixel_blue = shared[2];
-
-    //atomic_store_explicit(&pixel_red, 0, memory_order_relaxed);
-    //atomic_store_explicit(&pixel_green, 0, memory_order_relaxed);
-    //atomic_store_explicit(&pixel_blue, 0, memory_order_relaxed);
 
     //threadgroup float3 pixel_colors[32*32];
 
     float2 pos_norm = float2(pixel.x / 512.0, pixel.y / 384.0);
     float3 viewport_corner = cam.camera_center - float3(cam.viewport.x / 2.0, cam.viewport.y / 2.0, -cam.focal_length);
     float3 ray_dir = normalize((viewport_corner + float3(pos_norm.x * cam.viewport.x, pos_norm.y * cam.viewport.y, 0.0)) - cam.camera_center);
+    ray_dir = quat_mult(ray_dir, cam.rotation);
 
     ray beam;
 
@@ -261,7 +275,8 @@ kernel void compute_shader (
     float3 color = float3(0.0, 0.0, 0.0);
     float4 noise_sample = noise.sample(s, float2(gid));
     int bounce_limit = 10;
-    int mirror_num = 13;
+    int mirror_count = m_count[0];
+    int mirror_num = mirror_count + 1;
     float lighting_factor = 0.15;
 
     beam.ori = cam.camera_center;
@@ -270,7 +285,7 @@ kernel void compute_shader (
     int mirror_hits = 0;
     for (int n = 0; n < bounce_limit; n++) {
         hit = 0;
-        for (int i = 0; i < 12; i++) {
+        for (int i = 0; i < mirror_count; i++) {
             float4 new_intersection = ray_rect_intersect(beam, mirrors[i]);
             if (new_intersection.w < intersection.w && new_intersection.w > 0.1) {
                 intersection = new_intersection;
@@ -301,43 +316,51 @@ kernel void compute_shader (
             break;
         }
     }
-    //int3 write_color = int3(color * (32 * 32));
-    //atomic_fetch_add_explicit(&pixel_red, write_color.x, memory_order_relaxed);
-    //atomic_fetch_add_explicit(&pixel_green, write_color.y, memory_order_relaxed);
-    //atomic_fetch_add_explicit(&pixel_blue, write_color.z, memory_order_relaxed);
-    const int max_index = 16 * 56 / 4;
-    //int flat_index = gid.x + gid.y * 16;
+    const int max_index = 16 * 56 / 16;
     threadgroup float3 test[max_index];
     test[flat_index] = color;
     threadgroup_barrier(mem_flags::mem_none);
-    if (flat_index < (max_index * pixel_number) + (max_index / 2)) {
-        test[flat_index] = (test[flat_index] + test[(max_index * (pixel_number + 1)) - flat_index]) / 2.0;
+    if (flat_index % 2 == 0) {
+        test[flat_index] += test[flat_index + 1];
     }
     threadgroup_barrier(mem_flags::mem_none);
-    if (flat_index < (max_index * pixel_number) + (max_index / 4)) {
-        test[flat_index] = (test[flat_index] + test[(max_index * pixel_number) + (max_index / 2) - flat_index]) / 2.0;
+    if (flat_index % 4 == 0) {
+        test[flat_index] += test[flat_index + 2];
     }
     threadgroup_barrier(mem_flags::mem_none);
-    if (flat_index < max_index / 8) {
-        test[flat_index] = (test[flat_index] + test[(max_index * pixel_number) + (max_index / 4) - flat_index]) / 2.0;
+    if (flat_index % 8 == 0) {
+        test[flat_index] += test[flat_index + 4];
     }
     threadgroup_barrier(mem_flags::mem_none);
-    if (flat_index < max_index / 16) {
-        test[flat_index] = (test[flat_index] + test[(max_index * pixel_number) + (max_index / 8) - flat_index]) / 2.0;
-    }
-    threadgroup_barrier(mem_flags::mem_none);
-    //if (flat_index < max_index / 32) {
-    //    test[flat_index] = (test[flat_index] + test[(max_index * pixel_number) + (max_index / 16) - flat_index]) / 2.0;
+    //if (flat_index < (max_index * pixel_number) + (max_index / 2)) {
+    //    test[flat_index] = (test[flat_index] + test[(max_index * (pixel_number + 1)) - flat_index - 1]);
     //}
     //threadgroup_barrier(mem_flags::mem_none);
+    //if (flat_index < (max_index * pixel_number) + (max_index / 4)) {
+    //    test[flat_index] = (test[flat_index] + test[(max_index * pixel_number) + (max_index / 2) - flat_index]);
+    //}
+    //threadgroup_barrier(mem_flags::mem_none);
+    //if (flat_index < max_index / 8) {
+    //    test[flat_index] = (test[flat_index] + test[(max_index * pixel_number) + (max_index / 4) - flat_index]);
+    //}
+    //threadgroup_barrier(mem_flags::mem_none);
+    //if (flat_index < max_index / 16) {
+    //    test[flat_index] = (test[flat_index] + test[(max_index * pixel_number) + (max_index / 8) - flat_index]);
+    //}
+    //threadgroup_barrier(mem_flags::mem_none);
+    //if (flat_index < max_index / 32) {
+    //    test[flat_index] = (test[flat_index] + test[(max_index * pixel_number) + (max_index / 16) - flat_index]);
+    //}
+    threadgroup_barrier(mem_flags::mem_none);
     //if (flat_index < max_index / 64) {
-    //    test[flat_index] = (test[flat_index] + test[(max_index * pixel_number) + (max_index / 32) - flat_index]) / 2.0;
+    //    test[flat_index] = (test[flat_index] + test[(max_index * pixel_number) + (max_index / 32) - flat_index]);
     //}
     //threadgroup_barrier(mem_flags::mem_none);
     if (flat_index == pixel_number * max_index) {
-        for (int i = 1; i < max_index / 16; i++) {
-            test[pixel_number * max_index] = (test[pixel_number * max_index] + test[pixel_number * max_index + i]) / 2.0;
+        for (int i = 1; i < max_index / 8; i++) {
+            test[pixel_number * max_index] += test[pixel_number * max_index + (8 * i)];
         }
+        test[pixel_number * max_index] = test[pixel_number * max_index] / max_index;
         texout.write(float4(test[pixel_number * max_index], 1.0), pixel);
     }
 }

@@ -4,10 +4,10 @@ use std::ffi::c_float;
 #[derive(Debug, Clone, Copy)]
 pub struct Float4(pub c_float,pub c_float, pub c_float, pub c_float);
 impl Float4 {
-    pub fn new(v1 : Float2, v2 : Float2) -> Self {
+    pub fn _new(v1 : Float2, v2 : Float2) -> Self {
         Self(v1.0, v1.1, v2.0, v2.1)
     }
-    pub fn from_float3(v : Float3, s : f32) -> Self {
+    pub fn _from_float3(v : Float3, s : f32) -> Self {
         Self(v.0, v.1, v.2, s)
     }
 }
@@ -15,7 +15,7 @@ impl Float4 {
 #[derive(Debug, Clone, Copy)]
 pub struct Float3(pub c_float, pub c_float, pub c_float);
 impl Float3 {
-    pub fn new(v : Float2, f : f32) -> Self {
+    pub fn _new(v : Float2, f : f32) -> Self {
         Self(v.0, v.1, f)
     }
     pub fn magnitude(&self) -> f32 {
@@ -114,22 +114,27 @@ pub fn cross_product(vec1 : &Float3, vec2 : &Float3) -> Float3 {
 }
 
 
-// fn calculate_quaternion(camera_rotation_dir : &float3) -> float4 {
-//     let default_rotation = float3(0.0, 0.0, 1.0);
-//     let camera_rotation = normalize(&camera_rotation_dir);
+pub fn calculate_quaternion(camera_rotation_dir : &Float3) -> Float4 {
+    let default_rotation = Float3(0.0, 0.0, 1.0);
+    let camera_rotation = camera_rotation_dir.normalized();
 
-//     let rotation_axis = cross_product(&default_rotation, &camera_rotation);
-//     let rotation_axis_normalized = normalize(&rotation_axis);
-//     let rotation_axis_mag = mag(&rotation_axis);
+    let rotation_axis = cross_product(&default_rotation, &camera_rotation);
+    let rotation_axis_normalized = rotation_axis.normalized();
 
-//     //assuming normalized camera rotation vector
-//     let half_theta = rotation_axis_mag.asin() / 2.0;
-//     //println!("{}", half_theta / PI);
+    //assuming normalized camera rotation vector
+    let half_theta = rotation_axis.magnitude().asin() / 2.0;
+    //println!("{}", half_theta / PI);
 
-//     float4(
-//         rotation_axis_normalized.0 * half_theta.sin(),
-//         rotation_axis_normalized.1 * half_theta.sin(),
-//         rotation_axis_normalized.2 * half_theta.sin(),
-//         half_theta.cos()
-//     )
-// }
+    Float4(
+        rotation_axis_normalized.0 * half_theta.sin(),
+        rotation_axis_normalized.1 * half_theta.sin(),
+        rotation_axis_normalized.2 * half_theta.sin(),
+        half_theta.cos()
+    )
+}
+
+
+pub fn update_quat_angle(q : &Float4, theta : f32) -> Float4 {
+    let new_ratio = theta.sin() / q.3.acos().sin();
+    Float4(q.0 * new_ratio, q.1 * new_ratio, q.2 * new_ratio, theta.cos())
+}

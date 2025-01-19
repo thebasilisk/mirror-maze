@@ -3,7 +3,7 @@ use metal::*;
 
 use objc2::rc::Retained;
 use objc2_app_kit::{NSBackingStoreType, NSColor, NSScreen, NSWindow, NSWindowStyleMask};
-use objc2_foundation::{CGPoint, MainThreadMarker, NSRect, NSSize, NSString};
+use objc2_foundation::{CGPoint, MainThreadMarker, NSDate, NSRect, NSSize, NSString};
 
 
 //Metal utils
@@ -150,5 +150,11 @@ pub fn initialize_window(width : f64, height : f64, color : (f64, f64, f64, f64)
 pub fn set_window_layer(window : &Retained<NSWindow>, layer: &MetalLayer) {
     unsafe {
         window.contentView().expect("Error setting window layer").setLayer(mem::transmute(layer.as_ref()));
+    }
+}
+
+pub fn get_next_frame (fps : f64) -> Retained<NSDate> {
+    unsafe {
+        NSDate::dateWithTimeIntervalSinceNow(1.0 / fps)
     }
 }
