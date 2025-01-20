@@ -229,51 +229,51 @@ fn main() {
 
     let mut mirrors : Vec<Plane> = Vec::new();
     let mut materials : Vec<bool> = Vec::new();
-    for i in 0..10 {
-        if i % 2 == 0 {
-            // continue;
-        }
-        mirrors.push(Plane::new(
-            Float3(-10.0 + (i as f32 * 2.0), 0.0, 15.0 - (5i8 - i).abs() as f32),
-            Float3(3.0, 0.0, (random::<f32>() - 0.5) * 2.0),
-            Float3(0.0, 3.0, (random::<f32>() - 0.5) * 2.0),
-            Float3(i as f32 / 10.0, (10.0 - i as f32) / 10.0, (5.0 - i as f32).abs() / 10.0)
-        ));
-        if i % 3 == 0 {
-            materials.push(true);
-        } else {
-            materials.push(false);
-        }
-    }
-    // for i in -10..10 {
-    //     for j in -10..10 {
-    //         mirrors.push(Plane::new(
-    //             Float3((i * 5) as f32 + random::<f32>(), random::<f32>(), (j * 5) as f32 +  random::<f32>()),
-    //             Float3(random::<f32>() * 3.0, 0.0, random::<f32>() * 3.0),
-    //             Float3(0.0, random::<f32>() * 3.0, random::<f32>() * 3.0),
-    //             Float3(random::<f32>(), random::<f32>(), random::<f32>())
-    //         ));
-    //     }
+    // for i in 0..10 {
     //     if i % 2 == 0 {
+    //         //continue;
+    //     }
+    //     mirrors.push(Plane::new(
+    //         Float3(-10.0 + (i as f32 * 2.0), 0.0, 15.0 - (5i8 - i).abs() as f32),
+    //         Float3(3.0, 0.0, (random::<f32>() - 0.5) * 2.0),
+    //         Float3(0.0, 3.0, (random::<f32>() - 0.5) * 2.0),
+    //         Float3(i as f32 / 10.0, (10.0 - i as f32) / 10.0, (5.0 - i as f32).abs() / 10.0)
+    //     ));
+    //     if i % 3 == 0 {
     //         materials.push(true);
     //     } else {
     //         materials.push(false);
     //     }
     // }
-    // mirrors.push(Plane::new(
-    //     Float3(-50.0, -40.0, -50.0),
-    //     Float3(100.0, 0.0, 0.0),
-    //     Float3(0.0, 80.0, 10.0),
-    //     Float3(0.0, 0.4, 0.1)
-    // ));
-    // materials.push(true);
-    // mirrors.push(Plane::new(
-    //     Float3(-50.0, -40.0, 50.0),
-    //     Float3(0.0, 80.0, 0.0),
-    //     Float3(100.0, 0.0, 0.0),
-    //     Float3(0.0, 0.4, 0.1)
-    // ));
-    // materials.push(true);
+    for i in -3..3 {
+        for j in -3..3 {
+            mirrors.push(Plane::new(
+                Float3((i * 5) as f32 + random::<f32>(), random::<f32>(), (j * 5) as f32 +  random::<f32>()),
+                Float3(random::<f32>() * 3.0, 0.0, random::<f32>() * 3.0),
+                Float3(0.0, random::<f32>() * 3.0, random::<f32>() * 3.0),
+                Float3(random::<f32>(), random::<f32>(), random::<f32>())
+            ));
+        }
+        if i % 2 == 0 {
+            materials.push(true);
+        } else {
+            materials.push(false);
+        }
+    }
+    mirrors.push(Plane::new(
+        Float3(-9.0, -4.0, -25.0),
+        Float3(18.0, 0.0, 0.0),
+        Float3(0.0, 8.0, 5.0),
+        Float3(0.0, 0.4, 0.1)
+    ));
+    materials.push(true);
+    mirrors.push(Plane::new(
+        Float3(-9.0, -4.0, 25.0),
+        Float3(0.0, 8.0, 0.0),
+        Float3(18.0, 0.0, 0.0),
+        Float3(0.0, 0.4, 0.1)
+    ));
+    materials.push(true);
 
     println!("Total: {:?}", mirrors.len());
     let (nodes, indices) = build_bvh(mirrors.len(), mirrors.clone());
@@ -289,9 +289,9 @@ fn main() {
         // if node.tri_count == 1 && intersect_aabb(&beam, node.aabb_min, node.aabb_max) {
         //     println!("Yay! {:?}", mirrors[indices[node.left_first as usize]].origin);
         // }
-        print!("{n}: {},   aabb:", node.left_first);
-        println!("{:?}, {:?}", node.aabb_min, node.aabb_max);
-        if node.tri_count == 1 {
+        // print!("{n}: {},   aabb:", node.left_first);
+        // println!("{:?}, {:?}", node.aabb_min, node.aabb_max);
+        if node.tri_count > 1 {
             for i in node.left_first..node.left_first+node.tri_count{
                 println!("mirror origin: {:?}", mirrors[indices[i as usize] as usize].origin);
             }
@@ -437,6 +437,7 @@ fn main() {
     let mut frames = 0;
     let mut frame_time = get_next_frame(fps);
 
+    println!("Starting (this might take a second!)");
     loop {
         autoreleasepool(|| {
             if app.windows().is_empty() {
@@ -502,9 +503,9 @@ fn main() {
                             unsafe{
                                 match e.r#type() {
                                     NSEventType::MouseMoved => {
-                                        // half_theta = (half_theta + e.deltaX() as f32 / 512.0) % (std::f32::consts::PI * 2.0);
-                                        // quat = update_quat_angle(&quat, half_theta);
-                                        // pixels.append(&mut original_pixels.clone());
+                                        half_theta = (half_theta + e.deltaX() as f32 / 512.0) % (std::f32::consts::PI * 2.0);
+                                        quat = update_quat_angle(&quat, half_theta);
+                                        pixels.append(&mut original_pixels.clone());
                                     }
                                     NSEventType::KeyDown => {
                                         camera_center = float3_add(camera_center, Float3(1.0, 0.0, 0.0));

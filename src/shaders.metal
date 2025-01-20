@@ -58,7 +58,7 @@ void ray_rect_intersect (thread ray& beam, const rect mirror, const int index) {
     float d1 = dot(rect_vect, mirror.v) / length(mirror.v);
     float d2 = dot(rect_vect, mirror.u) / length(mirror.u);
 
-    if ((0 <= d1 && d1 <= length(mirror.v)) && (0 <= d2 && d2 <= length(mirror.u)) && norm_check != 0.0 && a > 0.1) {
+    if ((0 <= d1 && d1 <= length(mirror.v)) && (0 <= d2 && d2 <= length(mirror.u)) && norm_check != 0.0 && a > 0.001 && a < beam.t) {
         beam.t = a;
         beam.index = index;
     }
@@ -137,7 +137,7 @@ void intersect_bvh_iterative(
                 search_indices[tail++] = left_node.left_first;
             }
         }
-        if (intersect_aabb(beam, left_node.aabb_min, left_node.aabb_max)) {
+        if (intersect_aabb(beam, right_node.aabb_min, right_node.aabb_max)) {
             if (right_node.plane_count == 1) {
                 ray_rect_intersect(beam, mirrors[mirror_indices[right_node.left_first]], mirror_indices[right_node.left_first]);
             } else {
@@ -233,17 +233,17 @@ kernel void compute_shader (
     const device bool *materials [[ buffer(5) ]],
     uint2 tgid [[ threadgroup_position_in_grid ]],
     uint2 gid [[ thread_position_in_threadgroup ]],
-    uint2 texid [[ thread_position_in_grid ]]
-    //uint2 dimensions [[ threads_per_threadgroup ]]
+    uint2 texid [[ thread_position_in_grid ]],
+    uint2 dimensions [[ threads_per_threadgroup ]]
 ) {
     //96 is constant for view_height divided by 8
     //Double check this code, maybe supposed to be view_width / 8
     uint pixel_buffer_index = tgid.x + tgid.y * 8;
     uint2 pixel = pixel_update_buffer[pixel_buffer_index];
 
-    uint total_threads = 32 * 32;
+    uint total_threads = dimensions.x * dimensions.y;
 
-    uint flat_index = gid.x + 32 * gid.y;
+    uint flat_index = gid.x + dimensions.x * gid.y;
     uint pixel_number = flat_index / (total_threads / 16);
     uint pixel_y_add = pixel_number % 4;
     uint pixel_x_add = pixel_number / 4;
@@ -271,15 +271,8 @@ kernel void compute_shader (
     beam.t = 1e30f;
     int mirror_hits = 0;
     for (int n = 0; n < bounce_limit; n++) {
-        //intersect_bvh_iterative(beam, nodes, mirrors, indices);
-        if (intersect_aabb(beam, nodes[10].aabb_min, nodes[10].aabb_max)) {
-            //texout.write(float4(1.0, 0.0, 0.0, 1.0), pixel);
-            if (nodes[10].plane_count == 1) {
-                ray_rect_intersect(beam, mirrors[indices[nodes[10].left_first]], indices[nodes[10].left_first]);
-                if (beam.t < 1e30f) {
-                    texout.write(float4(1.0, 0.0, 0.0, 1.0), pixel);
-                }
-            }
+        intersect_bvh_iterative(beam, nodes, mirrors, indices);
+        if (beam.t < 1e30f) {
             float3 mirror_norm = cross(mirrors[beam.index].v, mirrors[beam.index].u);
             float beam_side = -sign(dot(beam.dir, mirror_norm));
             if (materials[beam.index] == false || beam_side == -1.0) {
@@ -302,23 +295,23 @@ kernel void compute_shader (
         }
     }
     //texout.write(float4(color, 1.0), pixel);
-    //const int max_index = 32 * 32 / 16;
-    //threadgroup float3 test[max_index];
-    //test[flat_index] = color;
-    //threadgroup_barrier(mem_flags::mem_none);
+    const int max_index = 16 * 56 / 16;
+    threadgroup float3 test[max_index];
+    test[flat_index] = color;
+    threadgroup_barrier(mem_flags::mem_none);
 
-    //if (flat_index % 2 == 0) {
-    //    test[flat_index] += test[flat_index + 1];
-    //}
-    //threadgroup_barrier(mem_flags::mem_none);
-    //if (flat_index % 4 == 0) {
-    //    test[flat_index] += test[flat_index + 2];
-    //}
-    //threadgroup_barrier(mem_flags::mem_none);
-    //if (flat_index % 8 == 0) {
-    //    test[flat_index] += test[flat_index + 4];
-    //}
-    //threadgroup_barrier(mem_flags::mem_none);
+    if (flat_index % 2 == 0) {
+        test[flat_index] += test[flat_index + 1];
+    }
+    threadgroup_barrier(mem_flags::mem_none);
+    if (flat_index % 4 == 0) {
+        test[flat_index] += test[flat_index + 2];
+    }
+    threadgroup_barrier(mem_flags::mem_none);
+    if (flat_index % 8 == 0) {
+        test[flat_index] += test[flat_index + 4];
+    }
+    threadgroup_barrier(mem_flags::mem_none);
     //if (flat_index < (max_index * pixel_number) + (max_index / 2)) {
     //    test[flat_index] = (test[flat_index] + test[(max_index * (pixel_number + 1)) - flat_index - 1]);
     //}
@@ -344,11 +337,11 @@ kernel void compute_shader (
     //}
     //threadgroup_barrier(mem_flags::mem_none);
 
-    //if (flat_index == pixel_number * max_index) {
-    //    for (int i = 1; i < max_index; i++) {
-    //        test[pixel_number * max_index] += test[pixel_number * max_index + (i)];
-    //    }
-    //    test[pixel_number * max_index] = test[pixel_number * max_index] / max_index;
-    //    texout.write(float4(test[pixel_number * max_index], 1.0), pixel);
-    //}
+    if (flat_index == pixel_number * max_index) {
+        for (int i = 1; i < max_index / 8; i++) {
+            test[pixel_number * max_index] += test[pixel_number * max_index + (8 * i)];
+        }
+        test[pixel_number * max_index] = test[pixel_number * max_index] / max_index;
+        texout.write(float4(test[pixel_number * max_index], 1.0), pixel);
+    }
 }
