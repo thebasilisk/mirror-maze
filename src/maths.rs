@@ -15,7 +15,7 @@ impl Float4 {
 #[derive(Debug, Clone, Copy)]
 pub struct Float3(pub c_float, pub c_float, pub c_float);
 impl Float3 {
-    pub fn _new(v : Float2, f : f32) -> Self {
+    pub fn new(v : Float2, f : f32) -> Self {
         Self(v.0, v.1, f)
     }
     pub fn magnitude(&self) -> f32 {
@@ -23,6 +23,15 @@ impl Float3 {
     }
     pub fn normalized(&self) -> Float3 {
         Float3(self.0 / self.magnitude(), self.1 / self.magnitude(), self.2 / self.magnitude())
+    }
+    pub fn single(f : f32) -> Self {
+        Float3(f, f, f)
+    }
+    pub fn fminf(&self, rhs : Float3) -> Float3 {
+        Float3(self.0.min(rhs.0), self.1.min(rhs.1), self.2.min(rhs.2))
+    }
+    pub fn fmaxf(&self, rhs : Float3) -> Float3 {
+        Float3(self.0.max(rhs.0), self.1.max(rhs.1), self.2.max(rhs.2))
     }
 }
 #[repr(C)]

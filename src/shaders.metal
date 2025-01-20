@@ -10,6 +10,8 @@ struct ColorInOut {
 struct ray {
     float3 ori;
     float3 dir;
+    float t = 1e30f;
+    uint index;
 };
 
 struct rect {
@@ -22,6 +24,12 @@ struct rect {
 struct sphere {
     packed_float3 ori;
     float rad;
+};
+struct bvh_node {
+    packed_float3 aabb_min;
+    packed_float3 aabb_max;
+    uint left_first;
+    uint plane_count;
 };
 
 struct camera {
@@ -38,8 +46,8 @@ struct camera {
         2 - Light Source
 */
 
-float4 ray_rect_intersect (const ray beam, const rect mirror) {
-    float3 rect_norm = cross(mirror.v, mirror.u);
+void ray_rect_intersect (thread ray& beam, const rect mirror, const int index) {
+    float3 rect_norm = normalize(cross(mirror.v, mirror.u));
     float norm_check = dot(beam.dir, rect_norm);
 
     float a = dot((mirror.ori - beam.ori), rect_norm) / norm_check;
@@ -50,10 +58,9 @@ float4 ray_rect_intersect (const ray beam, const rect mirror) {
     float d1 = dot(rect_vect, mirror.v) / length(mirror.v);
     float d2 = dot(rect_vect, mirror.u) / length(mirror.u);
 
-    if ((0 <= d1 && d1 <= length(mirror.v)) && (0 <= d2 && d2 <= length(mirror.u)) && norm_check != 0.0) {
-        return float4(intersection, a);
-    } else {
-        return float4(-1, -1, -1, -1);
+    if ((0 <= d1 && d1 <= length(mirror.v)) && (0 <= d2 && d2 <= length(mirror.u)) && norm_check != 0.0 && a > 0.1) {
+        beam.t = a;
+        beam.index = index;
     }
 };
 
@@ -74,6 +81,73 @@ float4 ray_sphere_intersect (const ray beam, const sphere light) {
         return float4(-1, -1, -1, -1);
     }
 };
+
+bool intersect_aabb(thread ray& beam, const float3 bmin, const float3 bmax) {
+    float tx1 = (bmin.x - beam.ori.x) / beam.dir.x, tx2 = (bmax.x - beam.ori.x) / beam.dir.x;
+    float tmin = min( tx1, tx2 ), tmax = max( tx1, tx2 );
+    float ty1 = (bmin.y - beam.ori.y) / beam.dir.y, ty2 = (bmax.y - beam.ori.y) / beam.dir.y;
+    tmin = max( tmin, min( ty1, ty2 ) ), tmax = min( tmax, max( ty1, ty2 ) );
+    float tz1 = (bmin.z - beam.ori.z) / beam.dir.z, tz2 = (bmax.z - beam.ori.z) / beam.dir.z;
+    tmin = max( tmin, min( tz1, tz2 ) ), tmax = min( tmax, max( tz1, tz2 ) );
+    return tmax >= tmin && tmin < beam.t && tmax > 0.0;
+}
+
+void intersect_bvh (
+    thread ray& beam,
+    const device bvh_node* nodes,
+    const device rect* mirrors,
+    const device uint* mirror_indices,
+    const uint node_index
+) {
+    const device bvh_node &node = nodes[node_index];
+
+    if (!intersect_aabb(beam, node.aabb_min, node.aabb_max)) return;
+    if (node.plane_count == 1) {
+        ray_rect_intersect(beam, mirrors[mirror_indices[node.left_first]], mirror_indices[node.left_first]);
+    } else {
+        intersect_bvh(beam, nodes, mirrors, mirror_indices, node.left_first);
+        intersect_bvh(beam, nodes, mirrors, mirror_indices, node.left_first + 1);
+    }
+}
+
+void intersect_bvh_iterative(
+    thread ray& beam,
+    const device bvh_node* nodes,
+    const device rect* mirrors,
+    const device uint* mirror_indices
+) {
+    const device bvh_node &root_node = nodes[0];
+    if(!intersect_aabb(beam, root_node.aabb_min, root_node.aabb_max)) return;
+
+    uint search_indices[50];
+    uint tail = 0;
+    uint head = 0;
+    search_indices[tail++] = root_node.left_first;
+
+    while (head <= tail) {
+        //ray_rect_intersect(beam, mirrors[mirror_indices[nodes[5].left_first]], mirror_indices[nodes[5].left_first]);
+        const device bvh_node &left_node = nodes[search_indices[head]];
+        const device bvh_node &right_node = nodes[search_indices[head] + 1];
+        head++;
+
+        if (intersect_aabb(beam, left_node.aabb_min, left_node.aabb_max)) {
+            if (left_node.plane_count == 1) {
+                ray_rect_intersect(beam, mirrors[mirror_indices[left_node.left_first]], mirror_indices[left_node.left_first]);
+            } else {
+                search_indices[tail++] = left_node.left_first;
+            }
+        }
+        if (intersect_aabb(beam, left_node.aabb_min, left_node.aabb_max)) {
+            if (right_node.plane_count == 1) {
+                ray_rect_intersect(beam, mirrors[mirror_indices[right_node.left_first]], mirror_indices[right_node.left_first]);
+            } else {
+                search_indices[tail++] = right_node.left_first;
+            }
+        }
+    }
+
+}
+
 
 float4 quat_inv(const float4 quat) {
     return float4(-quat.xyz, quat.w);
@@ -147,113 +221,29 @@ fragment float4 fragment_shader (
     return float4(color.xyz, 1.0);
 }
 
-fragment float4 fragment_shader_deprecated (
-    ColorInOut in [[stage_in]],
-    const device rect *mirrors [[ buffer(0) ]],
-    const device camera *camera [[ buffer(1) ]],
-    const device float *screen [[ buffer(2) ]],
-    const device sphere *lights [[ buffer(3) ]],
-    const device bool *materials [[ buffer(4) ]],
-    texture2d<float, access::sample> noise [[ texture(0) ]]
-) {
-
-    auto device const &cam = camera[0];
-
-    float2 in_pos_norm = float2(in.position.x / screen[0], in.position.y / screen[1]);
-    float3 viewport_corner = cam.camera_center - float3(cam.viewport.x / 2.0, cam.viewport.y / 2.0, -cam.focal_length);
-    float3 ray_dir = normalize((viewport_corner + float3(in_pos_norm.x * cam.viewport.x, in_pos_norm.y * cam.viewport.y, 0.0)) - cam.camera_center);
-
-    ray beam;
-    // beam.ori = cam.camera_center;
-    // beam.dir = ray_dir;
-
-    constexpr sampler s(
-                    address::repeat,
-                    filter::nearest);
-    int hit;
-    // float4 intersection = float4(0.0, 0.0, 0.0, 999.0);
-    float3 color = float3(0.0, 0.0, 0.0);
-    float4 noise_sample = noise.sample(s, in_pos_norm);
-    int bounce_limit = 10;
-    int total_samples = 10;
-    int mirror_num = 13;
-    float lighting_factor = 0.15;
-    for (int sample = 0; sample < total_samples; sample++) {
-        beam.ori = cam.camera_center;
-        beam.dir = ray_dir + (float3(random(noise_sample.xy + float2(sample, -sample)), random(noise_sample.xy + float2(1 - sample, 1 + sample)), 0.0) * 0.001);
-        float4 intersection = float4(0.0, 0.0, 0.0, 999.0);
-        int mirror_hits = 0;
-        for (int n = 0; n < bounce_limit; n++) {
-            hit = 0;
-            for (int i = 0; i < 12; i++) {
-                float4 new_intersection = ray_rect_intersect(beam, mirrors[i]);
-                if (new_intersection.w < intersection.w && new_intersection.w > 0.1) {
-                    intersection = new_intersection;
-                    mirror_num = i;
-                    hit = 1;
-                }
-            }
-            for (int j = 0; j < 3; j++) {
-                float4 new_intersection = ray_sphere_intersect(beam, lights[j]);
-                if (new_intersection.w < intersection.w && new_intersection.w > 0.1) {
-                    intersection = new_intersection;
-                    hit = 2;
-                }
-            }
-            if (hit == 1) {
-                float3 mirror_norm = cross(mirrors[mirror_num].v, mirrors[mirror_num].u);
-                float beam_side = -sign(dot(beam.dir, mirror_norm));
-                if (materials[mirror_num] == false || beam_side == -1.0) {
-                    color += mirrors[mirror_num].color * pow(lighting_factor, float(n - mirror_hits));
-                    // float3 random_dir = normalize((noise_sample.xyz - float3(0.5, 0.5, 0.5)) * 2.0);
-                    float3 random_dir = normalize(float3(random(in_pos_norm + float2(sample,sample)), random(noise_sample.xy + float2(sample,sample)), random(noise_sample.zx + float2(sample,sample))));
-                    float flip = sign(dot(random_dir, mirror_norm * beam_side));
-                    random_dir = random_dir * flip;
-                    beam.dir = normalize(random_dir + mirror_norm * beam_side);
-                } else {
-                    mirror_hits++;
-                    color += mirrors[mirror_num].color * 0.05;
-                    beam.dir = normalize(reflect(beam.dir, mirror_norm));
-                }
-                beam.ori = intersection.xyz;
-
-            } else if (hit == 2) {
-                color = float3(10.0, 10.0, 10.0);
-                break;
-            } else {
-                color += float3(0.3, 0.6, 0.8) * pow(lighting_factor, float(n - mirror_hits));
-                color *= 0.5;
-                break;
-            }
-        }
-    }
-    color = color / float(total_samples);
-    return float4(sqrt(color.x), sqrt(color.y), sqrt(color.z), 1.0);
-}
-
 
 kernel void compute_shader (
     texture2d<float, access::write> texout [[ texture(0) ]],
     texture2d<float, access::sample> noise [[ texture(1) ]],
     const device uint2 *pixel_update_buffer [[ buffer(0) ]],
     const device rect *mirrors [[ buffer(1) ]],
-    const device camera *camera [[ buffer(2) ]],
-    const device bool *materials [[ buffer(3) ]],
-    const device int *m_count [[ buffer(4) ]],
-    //threadgroup atomic_int *shared [[ threadgroup(0) ]],
+    const device bvh_node *nodes [[ buffer(2) ]],
+    const device uint *indices [[ buffer(3) ]],
+    const device camera *camera [[ buffer(4) ]],
+    const device bool *materials [[ buffer(5) ]],
     uint2 tgid [[ threadgroup_position_in_grid ]],
     uint2 gid [[ thread_position_in_threadgroup ]],
-    uint2 texid [[ thread_position_in_grid ]],
-    uint2 dimensions [[ threads_per_threadgroup ]]
+    uint2 texid [[ thread_position_in_grid ]]
+    //uint2 dimensions [[ threads_per_threadgroup ]]
 ) {
     //96 is constant for view_height divided by 8
     //Double check this code, maybe supposed to be view_width / 8
-    uint pixel_buffer_index = tgid.x + tgid.y * 128;
+    uint pixel_buffer_index = tgid.x + tgid.y * 8;
     uint2 pixel = pixel_update_buffer[pixel_buffer_index];
 
-    uint total_threads = dimensions.x * dimensions.y;
+    uint total_threads = 32 * 32;
 
-    uint flat_index = gid.x + dimensions.x * gid.y;
+    uint flat_index = gid.x + 32 * gid.y;
     uint pixel_number = flat_index / (total_threads / 16);
     uint pixel_y_add = pixel_number % 4;
     uint pixel_x_add = pixel_number / 4;
@@ -271,67 +261,64 @@ kernel void compute_shader (
     ray beam;
 
     constexpr sampler s(address::repeat, filter::nearest);
-    int hit;
     float3 color = float3(0.0, 0.0, 0.0);
     float4 noise_sample = noise.sample(s, float2(gid));
     int bounce_limit = 10;
-    int mirror_count = m_count[0];
-    int mirror_num = mirror_count + 1;
     float lighting_factor = 0.15;
 
     beam.ori = cam.camera_center;
     beam.dir = ray_dir + (float3(random(noise_sample.xy + float2(gid.xy)), random(noise_sample.xy + float2(gid.yx)), 0.0) * 0.001);
-    float4 intersection = float4(0.0, 0.0, 0.0, 999.0);
+    beam.t = 1e30f;
     int mirror_hits = 0;
     for (int n = 0; n < bounce_limit; n++) {
-        hit = 0;
-        for (int i = 0; i < mirror_count; i++) {
-            float4 new_intersection = ray_rect_intersect(beam, mirrors[i]);
-            if (new_intersection.w < intersection.w && new_intersection.w > 0.1) {
-                intersection = new_intersection;
-                mirror_num = i;
-                hit = 1;
+        //intersect_bvh_iterative(beam, nodes, mirrors, indices);
+        if (intersect_aabb(beam, nodes[10].aabb_min, nodes[10].aabb_max)) {
+            //texout.write(float4(1.0, 0.0, 0.0, 1.0), pixel);
+            if (nodes[10].plane_count == 1) {
+                ray_rect_intersect(beam, mirrors[indices[nodes[10].left_first]], indices[nodes[10].left_first]);
+                if (beam.t < 1e30f) {
+                    texout.write(float4(1.0, 0.0, 0.0, 1.0), pixel);
+                }
             }
-        }
-
-        if (hit == 1) {
-            float3 mirror_norm = cross(mirrors[mirror_num].v, mirrors[mirror_num].u);
+            float3 mirror_norm = cross(mirrors[beam.index].v, mirrors[beam.index].u);
             float beam_side = -sign(dot(beam.dir, mirror_norm));
-            if (materials[mirror_num] == false || beam_side == -1.0) {
-                color += mirrors[mirror_num].color * pow(lighting_factor, float(n - mirror_hits));
-                // float3 random_dir = normalize((noise_sample.xyz - float3(0.5, 0.5, 0.5)) * 2.0);
+            if (materials[beam.index] == false || beam_side == -1.0) {
+                color += mirrors[beam.index].color * pow(lighting_factor, float(n - mirror_hits));
                 float3 random_dir = normalize(float3(random(pos_norm + float2(gid.x + n, gid.y + n)), random(noise_sample.xy + float2(gid.x + n, gid.y + n)), random(noise_sample.zx + float2(gid.x + n, gid.y + n))));
                 float flip = sign(dot(random_dir, mirror_norm * beam_side));
                 random_dir = random_dir * flip;
+                beam.ori = beam.ori + beam.dir * beam.t;
                 beam.dir = normalize(random_dir + mirror_norm * beam_side);
             } else {
                 mirror_hits++;
-                color += mirrors[mirror_num].color * 0.05;
+                color += mirrors[beam.index].color * 0.05;
+                beam.ori = beam.ori + beam.dir * beam.t;
                 beam.dir = normalize(reflect(beam.dir, mirror_norm));
             }
-            beam.ori = intersection.xyz;
         } else {
             color += float3(0.3, 0.6, 0.8) * pow(lighting_factor, float(n - mirror_hits));
             color *= 0.5;
             break;
         }
     }
-    const int max_index = 16 * 56 / 16;
-    threadgroup float3 test[max_index];
-    test[flat_index] = color;
-    threadgroup_barrier(mem_flags::mem_none);
-    if (flat_index % 2 == 0) {
-        test[flat_index] += test[flat_index + 1];
-    }
-    threadgroup_barrier(mem_flags::mem_none);
-    if (flat_index % 4 == 0) {
-        test[flat_index] += test[flat_index + 2];
-    }
-    threadgroup_barrier(mem_flags::mem_none);
-    if (flat_index % 8 == 0) {
-        test[flat_index] += test[flat_index + 4];
-    }
-    threadgroup_barrier(mem_flags::mem_none);
+    //texout.write(float4(color, 1.0), pixel);
+    //const int max_index = 32 * 32 / 16;
+    //threadgroup float3 test[max_index];
+    //test[flat_index] = color;
+    //threadgroup_barrier(mem_flags::mem_none);
+
+    //if (flat_index % 2 == 0) {
+    //    test[flat_index] += test[flat_index + 1];
+    //}
+    //threadgroup_barrier(mem_flags::mem_none);
+    //if (flat_index % 4 == 0) {
+    //    test[flat_index] += test[flat_index + 2];
+    //}
+    //threadgroup_barrier(mem_flags::mem_none);
+    //if (flat_index % 8 == 0) {
+    //    test[flat_index] += test[flat_index + 4];
+    //}
+    //threadgroup_barrier(mem_flags::mem_none);
     //if (flat_index < (max_index * pixel_number) + (max_index / 2)) {
     //    test[flat_index] = (test[flat_index] + test[(max_index * (pixel_number + 1)) - flat_index - 1]);
     //}
@@ -356,11 +343,12 @@ kernel void compute_shader (
     //    test[flat_index] = (test[flat_index] + test[(max_index * pixel_number) + (max_index / 32) - flat_index]);
     //}
     //threadgroup_barrier(mem_flags::mem_none);
-    if (flat_index == pixel_number * max_index) {
-        for (int i = 1; i < max_index / 8; i++) {
-            test[pixel_number * max_index] += test[pixel_number * max_index + (8 * i)];
-        }
-        test[pixel_number * max_index] = test[pixel_number * max_index] / max_index;
-        texout.write(float4(test[pixel_number * max_index], 1.0), pixel);
-    }
+
+    //if (flat_index == pixel_number * max_index) {
+    //    for (int i = 1; i < max_index; i++) {
+    //        test[pixel_number * max_index] += test[pixel_number * max_index + (i)];
+    //    }
+    //    test[pixel_number * max_index] = test[pixel_number * max_index] / max_index;
+    //    texout.write(float4(test[pixel_number * max_index], 1.0), pixel);
+    //}
 }
