@@ -55,9 +55,9 @@ impl BVHNode {
     fn new(left_first : u32, tri_count : u32) -> Self {
         BVHNode { aabb_min: Float3::single(1e30f32), aabb_max: Float3::single(-1e30f32), left_first, tri_count}
     }
-    fn update_node_bounds(&mut self, planes : &Vec<Plane>, plane_indices : &Vec<usize>) {
+    fn update_node_bounds(&mut self, planes : &Vec<Plane>, plane_indices : &Vec<u32>) {
         for i in self.left_first..(self.left_first + self.tri_count) {
-            let plane = &planes[plane_indices[i as usize]];
+            let plane = &planes[plane_indices[i as usize] as usize];
             self.aabb_min = self.aabb_min.fminf(plane.origin);
             self.aabb_max = self.aabb_max.fmaxf(plane.origin);
             self.aabb_min = self.aabb_min.fminf(float3_add(plane.origin, plane.u));
@@ -66,7 +66,7 @@ impl BVHNode {
             self.aabb_max = self.aabb_max.fmaxf(float3_add(plane.origin, plane.v));
         }
     }
-    fn subdivide (&mut self, planes : &Vec<Plane>, plane_centers : &Vec<Float3>, plane_indices : &mut Vec<usize>, nodes : &mut Vec<BVHNode>) {
+    fn subdivide (&mut self, planes : &Vec<Plane>, plane_centers : &Vec<Float3>, plane_indices : &mut Vec<u32>, nodes : &mut Vec<BVHNode>) {
         // println!("Iter count: {}", nodes_used);
         if self.tri_count == 1 {
             return;
@@ -93,7 +93,7 @@ impl BVHNode {
         let mut j = i + self.tri_count as i32 - 1;
 
         while i <= j {
-            let plane_center = plane_centers[plane_indices[i as usize]];
+            let plane_center = plane_centers[plane_indices[i as usize] as usize];
             let axis_pos = match axis {
                 0 => plane_center.0,
                 1 => plane_center.1,
@@ -137,7 +137,7 @@ impl BVHNode {
     }
 }
 
-fn build_bvh (n : usize, planes : Vec<Plane>) -> (Vec<BVHNode>, Vec<usize>) {
+fn build_bvh (n : usize, planes : Vec<Plane>) -> (Vec<BVHNode>, Vec<u32>) {
     let mut nodes : Vec<BVHNode> = Vec::with_capacity(2 * n - 1);
     let mut plane_centers = Vec::with_capacity(n);
     let mut plane_indices = Vec::with_capacity(n);
@@ -145,7 +145,7 @@ fn build_bvh (n : usize, planes : Vec<Plane>) -> (Vec<BVHNode>, Vec<usize>) {
 
     for i in 0..n {
         plane_centers.push(planes[i].get_center());
-        plane_indices.push(i);
+        plane_indices.push(i as u32);
     }
     let mut root = BVHNode::new(0, n as u32);
     let nodes_used = 1;
@@ -285,15 +285,15 @@ fn main() {
     //     ori : Float3::single(0.5),
     //     dir : Float3(0.0001, 0.0001, 1.0)
     // };
-    for (i, node) in nodes.iter().enumerate() {
+    for (n, node) in nodes.iter().enumerate() {
         // if node.tri_count == 1 && intersect_aabb(&beam, node.aabb_min, node.aabb_max) {
         //     println!("Yay! {:?}", mirrors[indices[node.left_first as usize]].origin);
         // }
-        print!("{i}: {},   prim_count:", node.left_first);
-        println!("{}", node.tri_count);
-        if node.tri_count > 1 {
+        print!("{n}: {},   aabb:", node.left_first);
+        println!("{:?}, {:?}", node.aabb_min, node.aabb_max);
+        if node.tri_count == 1 {
             for i in node.left_first..node.left_first+node.tri_count{
-                println!("{:?}", mirrors[indices[i as usize]].origin);
+                println!("mirror origin: {:?}", mirrors[indices[i as usize] as usize].origin);
             }
         }
     }
