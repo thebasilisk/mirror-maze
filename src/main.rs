@@ -229,51 +229,78 @@ fn main() {
 
     let mut mirrors : Vec<Plane> = Vec::new();
     let mut materials : Vec<bool> = Vec::new();
-    // for i in 0..10 {
-    //     if i % 2 == 0 {
-    //         //continue;
-    //     }
-    //     mirrors.push(Plane::new(
-    //         Float3(-10.0 + (i as f32 * 2.0), 0.0, 15.0 - (5i8 - i).abs() as f32),
-    //         Float3(3.0, 0.0, (random::<f32>() - 0.5) * 2.0),
-    //         Float3(0.0, 3.0, (random::<f32>() - 0.5) * 2.0),
-    //         Float3(i as f32 / 10.0, (10.0 - i as f32) / 10.0, (5.0 - i as f32).abs() / 10.0)
-    //     ));
-    //     if i % 3 == 0 {
-    //         materials.push(true);
-    //     } else {
-    //         materials.push(false);
-    //     }
-    // }
-    for i in -5..5 {
-        for j in -5..5 {
-            mirrors.push(Plane::new(
-                Float3((i * 5) as f32 + random::<f32>(), random::<f32>(), (j * 5) as f32 +  random::<f32>()),
-                Float3(random::<f32>() * 3.0, 0.0, random::<f32>() * 3.0),
-                Float3(0.0, random::<f32>() * 3.0, random::<f32>() * 3.0),
-                Float3(random::<f32>(), random::<f32>(), random::<f32>())
-            ));
-        }
+    for i in 0..10 {
         if i % 2 == 0 {
+            continue;
+        }
+        mirrors.push(Plane::new(
+            Float3(-5.0 + (i as f32), 0.0, 7.0 - (5i8 - i).abs() as f32),
+            Float3(3.0, 0.0, (random::<f32>() - 0.5) * 0.0),
+            Float3(0.0, 3.0, (random::<f32>() - 0.5) * 0.0),
+            Float3(i as f32 / 10.0, (10.0 - i as f32) / 10.0, (5.0 - i as f32).abs() / 10.0)
+        ));
+        if i % 3 == 0 {
             materials.push(true);
         } else {
-            materials.push(true);
+            materials.push(false);
         }
     }
+    // for i in -5..5 {
+    //     for j in -5..5 {
+    //         mirrors.push(Plane::new(
+    //             Float3((i * 5) as f32 + random::<f32>(), random::<f32>(), (j * 5) as f32 +  random::<f32>()),
+    //             Float3(random::<f32>() * 3.0, 0.0, random::<f32>() * 3.0),
+    //             Float3(0.0, random::<f32>() * 3.0, random::<f32>() * 3.0),
+    //             Float3(random::<f32>(), random::<f32>(), random::<f32>())
+    //         ));
+    //     }
+    //     if i % 2 == 0 {
+    //         materials.push(true);
+    //     } else {
+    //         materials.push(true);
+    //     }
+    // }
     mirrors.push(Plane::new(
-        Float3(-9.0, -4.0, -25.0),
-        Float3(18.0, 0.0, 0.0),
-        Float3(0.0, 8.0, 5.0),
-        Float3(0.0, 0.4, 0.1)
+        Float3(-10.0, 0.0, 10.0),
+        Float3(20.0, 0.0, 0.0),
+        Float3(0.0, 10.0, 0.0),
+        Float3(0.45, 0.4, 0.5)
     ));
     materials.push(true);
     mirrors.push(Plane::new(
-        Float3(-9.0, -4.0, 25.0),
-        Float3(0.0, 8.0, 0.0),
-        Float3(18.0, 0.0, 0.0),
-        Float3(0.0, 0.4, 0.1)
+        Float3(10.0, 0.0, 10.0),
+        Float3(0.0, 0.0, -20.0),
+        Float3(0.0, 10.0, 0.0),
+        Float3(0.45, 0.4, 0.5)
     ));
     materials.push(true);
+    // mirrors.push(Plane::new(
+    //     Float3(10.0, 0.0, -10.0),
+    //     Float3(-20.0, 0.0, 0.0),
+    //     Float3(0.0, 10.0, 0.0),
+    //     Float3(0.45, 0.4, 0.5)
+    // ));
+    // materials.push(false);
+    // mirrors.push(Plane::new(
+    //     Float3(-10.0, 0.0, -10.0),
+    //     Float3(0.0, 0.0, 20.0),
+    //     Float3(0.0, 10.0, 0.0),
+    //     Float3(0.45, 0.4, 0.5)
+    // ));
+    // materials.push(false);
+    // mirrors.push(Plane::new(
+    //     Float3(-10.0, 0.0, 10.0),
+    //     Float3(20.0, 0.0, 0.0),
+    //     Float3(0.0, 0.0, -20.0),
+    //     Float3(0.45, 0.4, 0.5)
+    // ));
+    // materials.push(false);
+    // mirrors.push(Plane::new(
+    //     Float3(-10.0, 10.0, 10.0),
+    //     Float3(20.0, 0.0, 0.0),
+    //     Float3(0.0, 00.0, -20.0),
+    //     Float3(0.45, 0.4, 0.5)
+    // ));
 
     println!("Total: {:?}", mirrors.len());
     let (nodes, indices) = build_bvh(mirrors.len(), mirrors.clone());

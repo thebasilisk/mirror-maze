@@ -58,7 +58,7 @@ void ray_rect_intersect (thread ray& beam, const rect mirror, const int index) {
     float d1 = dot(rect_vect, mirror.v) / length(mirror.v);
     float d2 = dot(rect_vect, mirror.u) / length(mirror.u);
 
-    if ((0 <= d1 && d1 <= length(mirror.v)) && (0 <= d2 && d2 <= length(mirror.u)) && norm_check != 0.0 && a > 0.001 && a < beam.t) {
+    if ((0 <= d1 && d1 <= length(mirror.v)) && (0 <= d2 && d2 <= length(mirror.u)) && norm_check != 0.0 && a > 0.1 && a < beam.t) {
         beam.t = a;
         beam.index = index;
     }
@@ -263,36 +263,36 @@ kernel void compute_shader (
     constexpr sampler s(address::repeat, filter::nearest);
     float3 color = float3(0.0, 0.0, 0.0);
     float4 noise_sample = noise.sample(s, float2(gid));
-    int bounce_limit = 3;
-    float lighting_factor = 0.15;
+    int bounce_limit = 5;
+    float lighting_factor = 0.05;
+    bool lit = false;
 
     beam.ori = cam.camera_center;
-    beam.dir = ray_dir + (float3(random(noise_sample.xy + float2(gid.xy)), random(noise_sample.xy + float2(gid.yx)), 0.0) * 0.001);
+    beam.dir = normalize(ray_dir + (float3(random(noise_sample.xy + float2(gid.xy)), random(noise_sample.xy + float2(gid.yx)), 0.0) * 0.001));
     beam.t = 1e30f;
-    int mirror_hits = 0;
     for (int n = 0; n < bounce_limit; n++) {
         intersect_bvh_iterative(beam, nodes, mirrors, indices);
         if (beam.t < 1e30f) {
             float3 mirror_norm = cross(mirrors[beam.index].v, mirrors[beam.index].u);
             float beam_side = -sign(dot(beam.dir, mirror_norm));
-            if (materials[beam.index] == false || beam_side == -1.0) {
-                color += mirrors[beam.index].color * pow(lighting_factor, float(n - mirror_hits));
-                float3 random_dir = normalize(float3(random(pos_norm + float2(gid.x + n, gid.y + n)), random(noise_sample.xy + float2(gid.x + n, gid.y + n)), random(noise_sample.zx + float2(gid.x + n, gid.y + n))));
-                float flip = sign(dot(random_dir, mirror_norm * beam_side));
-                random_dir = random_dir * flip;
-                beam.ori = beam.ori + beam.dir * beam.t;
-                beam.dir = normalize(random_dir + mirror_norm * beam_side);
-            } else {
-                mirror_hits++;
-                color += mirrors[beam.index].color * 0.05;
-                beam.ori = beam.ori + beam.dir * beam.t;
-                beam.dir = normalize(reflect(beam.dir, mirror_norm));
-            }
+            color += mirrors[beam.index].color * pow(lighting_factor, float(n));
+            float3 random_dir = normalize(float3(random(pos_norm + float2(gid.x + n, gid.y + n)), random(noise_sample.xy + float2(gid.x + n, gid.y + n)), random(noise_sample.zx + float2(gid.x + n, gid.y + n))));
+            float flip = sign(dot(random_dir, mirror_norm * beam_side));
+            random_dir = random_dir * flip;
+
+
+            beam.ori = beam.ori + beam.dir * beam.t;
+            beam.dir = normalize(random_dir + mirror_norm * beam_side);
+            beam.t = 1e30f;
+
+            lit = materials[beam.index] || lit;
         } else {
-            color += float3(0.3, 0.6, 0.8) * pow(lighting_factor, float(n - mirror_hits));
-            color *= 0.5;
+            color += float3(0.3, 0.6, 0.8) * pow(lighting_factor, float(n));
             break;
         }
+    }
+    if (!lit) {
+        color *= 0.2;
     }
     //texout.write(float4(color, 1.0), pixel);
     const int max_index = 16 * 56 / 16;
