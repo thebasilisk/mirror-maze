@@ -7,7 +7,7 @@ impl Float4 {
     pub fn _new(v1 : Float2, v2 : Float2) -> Self {
         Self(v1.0, v1.1, v2.0, v2.1)
     }
-    pub fn _from_float3(v : Float3, s : f32) -> Self {
+    pub fn from_float3(v : Float3, s : f32) -> Self {
         Self(v.0, v.1, v.2, s)
     }
 }
@@ -146,4 +146,20 @@ pub fn calculate_quaternion(camera_rotation_dir : &Float3) -> Float4 {
 pub fn update_quat_angle(q : &Float4, theta : f32) -> Float4 {
     let new_ratio = theta.sin() / q.3.acos().sin();
     Float4(q.0 * new_ratio, q.1 * new_ratio, q.2 * new_ratio, theta.cos())
+}
+
+
+fn quat_inv(quat : Float4) -> Float4 {
+    Float4(-quat.0, -quat.1, -quat.2, quat.3)
+}
+
+fn quat_dot (q1 : Float4, q2 : Float4) -> Float4 {
+    let s : f32 = q1.3 * q2.3 - dot3(Float3(q1.0, q1.1, q1.2), Float3(q2.0, q2.1, q2.2));
+    let v : Float3 = float3_add(cross_product(&Float3(q1.0, q1.1, q1.2), &Float3(q2.0, q2.1, q2.2)), float3_add(scale3(Float3(q2.0, q2.1, q2.2), q1.3), scale3(Float3(q1.0, q1.1, q1.2), q2.3)));
+    Float4::from_float3(v, s)
+}
+
+pub fn quat_mult (vec : Float3, quat : Float4) -> Float3 {
+    let r = quat_dot(quat_dot(quat_inv(quat), Float4::from_float3(vec, 0.0)), quat);
+    Float3(r.0, r.1, r.2)
 }

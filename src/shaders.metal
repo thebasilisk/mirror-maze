@@ -263,7 +263,7 @@ kernel void compute_shader (
     constexpr sampler s(address::repeat, filter::nearest);
     float3 color = float3(0.0, 0.0, 0.0);
     float4 noise_sample = noise.sample(s, float2(gid));
-    int bounce_limit = 10;
+    int bounce_limit = 3;
     float lighting_factor = 0.15;
 
     beam.ori = cam.camera_center;

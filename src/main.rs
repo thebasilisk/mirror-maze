@@ -1,14 +1,14 @@
 mod utils;
 mod maths;
 
-use std::{ffi::c_float, mem};
+use std::{ffi::c_float, mem, time::Instant};
 
 use rand::{random, seq::SliceRandom, thread_rng};
 use objc::rc::autoreleasepool;
 use objc2_app_kit::{NSAnyEventMask, NSApp, NSApplication, NSApplicationActivationPolicy, NSBitmapImageRep, NSEventType, NSImage, NSWindowStyleMask};
 use objc2_foundation::{MainThreadMarker, NSComparisonResult, NSDate, NSDefaultRunLoopMode};
 use utils::{copy_to_buf, get_library, get_next_frame, init_nsstring, initialize_window, make_buf, new_metal_layer, new_render_pass_descriptor, prepare_pipeline_state, set_window_layer};
-use maths::{calculate_quaternion, float3_add, float3_subtract, scale3, update_quat_angle, Float2, Float3, Float4};
+use maths::{calculate_quaternion, float3_add, float3_subtract, quat_mult, scale3, update_quat_angle, Float2, Float3, Float4};
 
 use metal::*;
 
@@ -245,8 +245,8 @@ fn main() {
     //         materials.push(false);
     //     }
     // }
-    for i in -3..3 {
-        for j in -3..3 {
+    for i in -5..5 {
+        for j in -5..5 {
             mirrors.push(Plane::new(
                 Float3((i * 5) as f32 + random::<f32>(), random::<f32>(), (j * 5) as f32 +  random::<f32>()),
                 Float3(random::<f32>() * 3.0, 0.0, random::<f32>() * 3.0),
@@ -257,7 +257,7 @@ fn main() {
         if i % 2 == 0 {
             materials.push(true);
         } else {
-            materials.push(false);
+            materials.push(true);
         }
     }
     mirrors.push(Plane::new(
@@ -437,9 +437,16 @@ fn main() {
     let mut frames = 0;
     let mut frame_time = get_next_frame(fps);
 
+    let mut key_pressed = 112;
+    let mut rot_updated = false;
+
     println!("Starting (this might take a second!)");
     loop {
         autoreleasepool(|| {
+
+            // println!("{:?}", now.elapsed());
+            // now = Instant::now();
+
             if app.windows().is_empty() {
                 unsafe {app.terminate(None)};
             }
@@ -451,6 +458,20 @@ fn main() {
                 // }
                 let pixel_data = random_pixels(threadgroups_per_grid.width, threadgroups_per_grid.height, &mut pixels, &original_pixels);
                 copy_to_buf(&pixel_data, &pixel_update_buf);
+
+                match key_pressed {
+                    0 => camera_center = float3_subtract(camera_center, quat_mult(Float3(0.2, 0.0, 0.0), quat)),
+                    1 => camera_center = float3_subtract(camera_center, quat_mult(Float3(0.0, 0.0, 0.2), quat)),
+                    2 => camera_center = float3_add(camera_center, quat_mult(Float3(0.2, 0.0, 0.0), quat)),
+                    13 => camera_center = float3_add(camera_center, quat_mult(Float3(0.0, 0.0, 0.2), quat)),
+                    _ => ()
+                }
+
+                if rot_updated {
+                    quat = update_quat_angle(&quat, half_theta);
+                    pixels.splice(0..0, original_pixels.clone());
+                    rot_updated = false;
+                }
                 if quat.0.is_nan() || quat.1.is_nan() || quat.2.is_nan() || quat.3.is_nan() {
                     println!("Help!");
                 } else {
@@ -489,36 +510,40 @@ fn main() {
                 encoder.end_encoding();
                 command_buffer.present_drawable(&drawable);
                 command_buffer.commit();
+            }
+            loop {
+                let event = unsafe {NSApp(mtm).nextEventMatchingMask_untilDate_inMode_dequeue(
+                    NSAnyEventMask,
+                    None,
+                    NSDefaultRunLoopMode,
+                    true
+                )};
 
-                loop {
-                    let event = unsafe {NSApp(mtm).nextEventMatchingMask_untilDate_inMode_dequeue(
-                        NSAnyEventMask,
-                        None,
-                        NSDefaultRunLoopMode,
-                        true
-                    )};
-
-                    match event {
-                        Some(ref e) => {
-                            unsafe{
-                                match e.r#type() {
-                                    NSEventType::MouseMoved => {
-                                        half_theta = (half_theta + e.deltaX() as f32 / 512.0) % (std::f32::consts::PI * 2.0);
-                                        quat = update_quat_angle(&quat, half_theta);
-                                        pixels.append(&mut original_pixels.clone());
+                match event {
+                    Some(ref e) => {
+                        unsafe{
+                            match e.r#type() {
+                                NSEventType::KeyDown => {
+                                    key_pressed = e.keyCode();
+                                },
+                                NSEventType::KeyUp => {
+                                    if key_pressed == e.keyCode() {
+                                        key_pressed = 112;
                                     }
-                                    NSEventType::KeyDown => {
-                                        camera_center = float3_add(camera_center, Float3(1.0, 0.0, 0.0));
-                                    }
-                                    _ => {
-
-                                    }
+                                },
+                                NSEventType::MouseMoved => {
+                                    half_theta = (half_theta - e.deltaX() as f32 / 512.0).rem_euclid(std::f32::consts::PI);
+                                    rot_updated = true;
+                                    // println!("{}", half_theta);
                                 }
-                                NSApp(mtm).sendEvent(&e);
-                            };
-                        },
-                        None => break,
-                    }
+                                _ => {
+
+                                }
+                            }
+                            NSApp(mtm).sendEvent(&e);
+                        };
+                    },
+                    None => break,
                 }
             }
         })
