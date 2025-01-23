@@ -82,14 +82,14 @@ float4 ray_sphere_intersect (const ray beam, const sphere light) {
     }
 };
 
-bool intersect_aabb(thread ray& beam, const float3 bmin, const float3 bmax) {
+float intersect_aabb(thread ray& beam, const float3 bmin, const float3 bmax) {
     float tx1 = (bmin.x - beam.ori.x) / beam.dir.x, tx2 = (bmax.x - beam.ori.x) / beam.dir.x;
     float tmin = min( tx1, tx2 ), tmax = max( tx1, tx2 );
     float ty1 = (bmin.y - beam.ori.y) / beam.dir.y, ty2 = (bmax.y - beam.ori.y) / beam.dir.y;
     tmin = max( tmin, min( ty1, ty2 ) ), tmax = min( tmax, max( ty1, ty2 ) );
     float tz1 = (bmin.z - beam.ori.z) / beam.dir.z, tz2 = (bmax.z - beam.ori.z) / beam.dir.z;
     tmin = max( tmin, min( tz1, tz2 ) ), tmax = min( tmax, max( tz1, tz2 ) );
-    return tmax >= tmin && tmin < beam.t && tmax > 0.0;
+    if (tmax >= tmin && tmin < beam.t && tmax > 0.0) return tmin; else return 1e30f;
 }
 
 void intersect_bvh (
@@ -116,36 +116,41 @@ void intersect_bvh_iterative(
     const device rect* mirrors,
     const device uint* mirror_indices
 ) {
-    const device bvh_node &root_node = nodes[0];
-    if(!intersect_aabb(beam, root_node.aabb_min, root_node.aabb_max)) return;
+    const device bvh_node* node = &nodes[0];
 
-    uint search_indices[50];
-    uint tail = 0;
+    const device bvh_node* stack[50];
     uint head = 0;
-    search_indices[tail++] = root_node.left_first;
 
-    while (head <= tail) {
-        //ray_rect_intersect(beam, mirrors[mirror_indices[nodes[5].left_first]], mirror_indices[nodes[5].left_first]);
-        const device bvh_node &left_node = nodes[search_indices[head]];
-        const device bvh_node &right_node = nodes[search_indices[head] + 1];
-        head++;
+    while (true) {
+        if (node->plane_count > 0) {
+            for (uint i = 0; i < node->plane_count; i++) ray_rect_intersect(beam, mirrors[mirror_indices[node->left_first + i]], mirror_indices[node->left_first + i]);
+            if (head == 0) break; else node = stack[--head];
 
-        if (intersect_aabb(beam, left_node.aabb_min, left_node.aabb_max)) {
-            if (left_node.plane_count == 1) {
-                ray_rect_intersect(beam, mirrors[mirror_indices[left_node.left_first]], mirror_indices[left_node.left_first]);
-            } else {
-                search_indices[tail++] = left_node.left_first;
-            }
+            continue;
         }
-        if (intersect_aabb(beam, right_node.aabb_min, right_node.aabb_max)) {
-            if (right_node.plane_count == 1) {
-                ray_rect_intersect(beam, mirrors[mirror_indices[right_node.left_first]], mirror_indices[right_node.left_first]);
-            } else {
-                search_indices[tail++] = right_node.left_first;
-            }
+
+        const device bvh_node* left_node = &nodes[node->left_first];
+        const device bvh_node* right_node = &nodes[node->left_first + 1];
+
+        float dist1 = intersect_aabb(beam, left_node->aabb_min, left_node->aabb_max);
+        float dist2 = intersect_aabb(beam, right_node->aabb_min, right_node->aabb_max);
+
+        if (dist1 > dist2) {
+            float temp = dist1;
+            dist1 = dist2;
+            dist2 = temp;
+
+            const device bvh_node* nemp = left_node;
+            left_node = right_node;
+            right_node = nemp;
+        }
+        if (dist1 == 1e30f) {
+            if (head == 0) break; else node = stack[--head];
+        } else {
+            node = left_node;
+            if (dist2 != 1e30f) stack[head++] = right_node;
         }
     }
-
 }
 
 
@@ -170,16 +175,6 @@ float random (float2 st) {
                          float2(12.9898,78.233)))*
         43758.5453123) - 0.5) * 2.0;
 };
-
-//fragment shader
-//every frame, add new data to existing image
-//
-    //calculate ray direction and origin based on camera.
-    //check intersection against all world-objects
-    //apply lighting based on intersection point
-    //calculate new ray direction with origin of intersection point
-        //this is based on material diffuse/glossiness
-    //continue for N bounces.
 
 
 vertex ColorInOut vertex_shader (
@@ -236,8 +231,8 @@ kernel void compute_shader (
     uint2 texid [[ thread_position_in_grid ]],
     uint2 dimensions [[ threads_per_threadgroup ]]
 ) {
-    //Double check this code, maybe supposed to be view_width / 16
-    uint pixel_buffer_index = tgid.x + tgid.y * 32;
+    //tgid.y * grid width
+    uint pixel_buffer_index = tgid.x + tgid.y * (512/16);
     uint2 pixel = pixel_update_buffer[pixel_buffer_index];
 
     uint total_threads = dimensions.x * dimensions.y;
@@ -262,8 +257,8 @@ kernel void compute_shader (
     constexpr sampler s(address::repeat, filter::nearest);
     float3 color = float3(0.0, 0.0, 0.0);
     float4 noise_sample = noise.sample(s, float2(gid));
-    int bounce_limit = 5;
-    float lighting_factor = 0.15;
+    int bounce_limit = 7;
+    float lighting_factor = 0.25;
 
     beam.ori = cam.camera_center;
     beam.dir = ray_dir + (float3(random(noise_sample.xy + float2(gid.xy)), random(noise_sample.xy + float2(gid.yx)), 0.0) * 0.001);
@@ -272,7 +267,7 @@ kernel void compute_shader (
     for (int n = 0; n < bounce_limit; n++) {
         intersect_bvh_iterative(beam, nodes, mirrors, indices);
         if (beam.t < 1e30f) {
-            float3 mirror_norm = cross(mirrors[beam.index].v, mirrors[beam.index].u);
+            float3 mirror_norm = normalize(cross(mirrors[beam.index].v, mirrors[beam.index].u));
             float beam_side = -sign(dot(beam.dir, mirror_norm));
             if (materials[beam.index] == false || beam_side == -1.0) {
                 color += mirrors[beam.index].color * pow(lighting_factor, float(n - mirror_hits));
@@ -284,14 +279,13 @@ kernel void compute_shader (
                 beam.t = 1e30f;
             } else {
                 mirror_hits++;
-                color += mirrors[beam.index].color * 0.05;
+                color += mirrors[beam.index].color * pow(lighting_factor, float(n - mirror_hits)) * 0.05;
                 beam.ori = beam.ori + beam.dir * beam.t;
                 beam.dir = normalize(reflect(beam.dir, mirror_norm));
                 beam.t = 1e30f;
             }
         } else {
             color += float3(0.3, 0.6, 0.8) * pow(lighting_factor, float(n - mirror_hits));
-            color *= 0.5;
             break;
         }
     }

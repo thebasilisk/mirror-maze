@@ -285,7 +285,7 @@ fn main() {
     let mut materials : Vec<bool> = Vec::new();
     for i in 0..10 {
         if i % 2 == 0 {
-            continue;
+            //continue;
         }
         mirrors.push(Plane::new(
             Float3(-10.0 + (i as f32 * 2.0), 0.0, 15.0 - (5i8 - i).abs() as f32),
@@ -299,25 +299,25 @@ fn main() {
             materials.push(false);
         }
     }
-    // for i in -3..3 {
-    //     for j in -3..3 {
+    // for i in -10..10 {
+    //     for j in -10..10 {
     //         mirrors.push(Plane::new(
     //             Float3((i * 5) as f32 + random::<f32>(), random::<f32>(), (j * 5) as f32 +  random::<f32>()),
     //             Float3(random::<f32>() * 3.0, 0.0, random::<f32>() * 3.0),
     //             Float3(0.0, random::<f32>() * 3.0, random::<f32>() * 3.0),
     //             Float3(random::<f32>(), random::<f32>(), random::<f32>())
     //         ));
-    //     }
-    //     if i % 2 == 0 {
-    //         materials.push(true);
-    //     } else {
-    //         materials.push(true);
+    //         if i % 3 == 0 {
+    //             materials.push(true);
+    //         } else {
+    //             materials.push(false);
+    //         }
     //     }
     // }
     mirrors.push(Plane::new(
         Float3(-9.0, -4.0, -25.0),
         Float3(18.0, 0.0, 0.0),
-        Float3(0.0, 8.0, 5.0),
+        Float3(0.0, 8.0, 0.0),
         Float3(0.0, 0.4, 0.1)
     ));
     materials.push(true);
