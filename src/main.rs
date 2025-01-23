@@ -214,8 +214,8 @@ fn build_bvh (n : usize, planes : Vec<Plane>) -> (Vec<BVHNode>, Vec<u32>) {
 
 fn gen_pixels () -> Vec<(u32, u32)> {
     let pixel_chunk_size = 4;
-    let width = 512 / pixel_chunk_size;
-    let height = 384 / pixel_chunk_size;
+    let width = 2 * 512 / pixel_chunk_size;
+    let height = 2 * 384 / pixel_chunk_size;
     let mut out_pixels : Vec<(u32, u32)> = Vec::with_capacity((width*height) as usize);
 
     for i in 0..width {
@@ -363,8 +363,8 @@ fn main() {
         NSWindowStyleMask::Titled.union(
         NSWindowStyleMask::Closable);
 
-    let view_width : f32 = 1024.0 / 2.0;
-    let view_height : f32 = 768.0 / 2.0;
+    let view_width : f32 = 1024.0;
+    let view_height : f32 = 768.0;
 
     //Initializes an NSWindow object with a size, backing color, title, and style_mask
     let window = initialize_window(
@@ -496,7 +496,7 @@ fn main() {
 
     let mirror_count_data = vec![mirrors.len() as u32];
 
-    let fps = 60.0;
+    let fps = 30.0;
     let mut frames = 0;
     let mut frame_time = get_next_frame(fps);
 
