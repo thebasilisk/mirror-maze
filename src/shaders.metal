@@ -236,9 +236,8 @@ kernel void compute_shader (
     uint2 texid [[ thread_position_in_grid ]],
     uint2 dimensions [[ threads_per_threadgroup ]]
 ) {
-    //96 is constant for view_height divided by 8
-    //Double check this code, maybe supposed to be view_width / 8
-    uint pixel_buffer_index = tgid.x + tgid.y * 8;
+    //Double check this code, maybe supposed to be view_width / 16
+    uint pixel_buffer_index = tgid.x + tgid.y * 32;
     uint2 pixel = pixel_update_buffer[pixel_buffer_index];
 
     uint total_threads = dimensions.x * dimensions.y;
@@ -263,7 +262,7 @@ kernel void compute_shader (
     constexpr sampler s(address::repeat, filter::nearest);
     float3 color = float3(0.0, 0.0, 0.0);
     float4 noise_sample = noise.sample(s, float2(gid));
-    int bounce_limit = 3;
+    int bounce_limit = 5;
     float lighting_factor = 0.15;
 
     beam.ori = cam.camera_center;
@@ -282,11 +281,13 @@ kernel void compute_shader (
                 random_dir = random_dir * flip;
                 beam.ori = beam.ori + beam.dir * beam.t;
                 beam.dir = normalize(random_dir + mirror_norm * beam_side);
+                beam.t = 1e30f;
             } else {
                 mirror_hits++;
                 color += mirrors[beam.index].color * 0.05;
                 beam.ori = beam.ori + beam.dir * beam.t;
                 beam.dir = normalize(reflect(beam.dir, mirror_norm));
+                beam.t = 1e30f;
             }
         } else {
             color += float3(0.3, 0.6, 0.8) * pow(lighting_factor, float(n - mirror_hits));

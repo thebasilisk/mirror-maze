@@ -1,4 +1,4 @@
-use std::ffi::c_float;
+use std::{ffi::c_float, ops::Index};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -34,6 +34,19 @@ impl Float3 {
         Float3(self.0.max(rhs.0), self.1.max(rhs.1), self.2.max(rhs.2))
     }
 }
+impl Index<usize> for Float3 {
+    type Output = f32;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        match index {
+            0 => &self.0,
+            1 => &self.1,
+            2 => &self.2,
+            _ => &self.0,
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct Float2(pub c_float, pub c_float);

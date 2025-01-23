@@ -56,15 +56,21 @@ impl BVHNode {
         BVHNode { aabb_min: Float3::single(1e30f32), aabb_max: Float3::single(-1e30f32), left_first, tri_count}
     }
     fn update_node_bounds(&mut self, planes : &Vec<Plane>, plane_indices : &Vec<u32>) {
+        let mut current_aabb = aabb::default();
         for i in self.left_first..(self.left_first + self.tri_count) {
             let plane = &planes[plane_indices[i as usize] as usize];
-            self.aabb_min = self.aabb_min.fminf(plane.origin);
-            self.aabb_max = self.aabb_max.fmaxf(plane.origin);
-            self.aabb_min = self.aabb_min.fminf(float3_add(plane.origin, plane.u));
-            self.aabb_max = self.aabb_max.fmaxf(float3_add(plane.origin, plane.u));
-            self.aabb_min = self.aabb_min.fminf(float3_add(plane.origin, plane.v));
-            self.aabb_max = self.aabb_max.fmaxf(float3_add(plane.origin, plane.v));
+            current_aabb.grow(plane.origin);
+            current_aabb.grow(float3_add(plane.origin, plane.u));
+            current_aabb.grow(float3_add(plane.origin, plane.v));
+            // self.aabb_min = self.aabb_min.fminf(plane.origin);
+            // self.aabb_max = self.aabb_max.fmaxf(plane.origin);
+            // self.aabb_min = self.aabb_min.fminf(float3_add(plane.origin, plane.u));
+            // self.aabb_max = self.aabb_max.fmaxf(float3_add(plane.origin, plane.u));
+            // self.aabb_min = self.aabb_min.fminf(float3_add(plane.origin, plane.v));
+            // self.aabb_max = self.aabb_max.fmaxf(float3_add(plane.origin, plane.v));
         }
+        self.aabb_min = current_aabb.bmin;
+        self.aabb_max = current_aabb.bmax;
     }
     fn subdivide (&mut self, planes : &Vec<Plane>, plane_centers : &Vec<Float3>, plane_indices : &mut Vec<u32>, nodes : &mut Vec<BVHNode>) {
         // println!("Iter count: {}", nodes_used);
@@ -73,19 +79,30 @@ impl BVHNode {
         }
         let diag = float3_subtract(self.aabb_max, self.aabb_min);
         let mut axis = 0;
-        if diag.1 > diag.0 {
-            axis = 1;
+        let mut best_pos = 0.0;
+        let mut best_cost = 1e30f32;
+        let mut best_axis = 6;
+
+        for axis in 0..=2 {
+            for i in self.left_first..(self.left_first+self.tri_count) {
+                let plane = &planes[plane_indices[i as usize] as usize];
+                let candidate = plane.get_center()[axis];
+                let cost = self.eval_sah(axis, candidate, planes, plane_indices);
+                if cost <= best_cost {
+                    best_cost = cost;
+                    best_pos = candidate;
+                    best_axis = axis;
+                }
+            }
         }
-        if diag.2 > diag.1.max(diag.0) {
-            axis = 2;
+        let diag = float3_subtract(self.aabb_max, self.aabb_min);
+        let area = diag.0 * diag.1 + diag.1 * diag.2 + diag.2 * diag.0;
+        let parent_cost = self.tri_count as f32 * area;
+        if best_cost > parent_cost {
+            return;
         }
-        let split_dist = diag.2.max(diag.1.max(diag.0)) / 2.0;
-        let split_pos = match axis {
-            0 => split_dist + self.aabb_min.0,
-            1 => split_dist + self.aabb_min.1,
-            2 => split_dist + self.aabb_min.2,
-            _ => panic!(),
-        };
+        axis = best_axis;
+        let split_pos = best_pos;
         // println!("{:?}", self.aabb_min);
         // println!("{:?}", self.aabb_max);
         // println!("{}", self.tri_count);
@@ -94,12 +111,7 @@ impl BVHNode {
 
         while i <= j {
             let plane_center = plane_centers[plane_indices[i as usize] as usize];
-            let axis_pos = match axis {
-                0 => plane_center.0,
-                1 => plane_center.1,
-                2 => plane_center.2,
-                _ => panic!(),
-            };
+            let axis_pos = plane_center[axis];
             // println!("i: {i}, j: {j}");
             // print!("Compare: {}   ", split_pos);
             // println!("{}", axis_pos);
@@ -132,10 +144,53 @@ impl BVHNode {
         self.tri_count = 0;
         // println!("{}", self.left_first);
         // println!("{}", self.tri_count);
-
-
+    }
+    fn eval_sah(&self, axis : usize, pos : f32, planes : &Vec<Plane>, plane_indices : &Vec<u32>) -> f32 {
+        let mut left_box = aabb::default();
+        let mut right_box = aabb::default();
+        let mut left_count = 0;
+        let mut right_count = 0;
+        for i in self.left_first..(self.left_first+self.tri_count) {
+            let plane = &planes[plane_indices[i as usize] as usize];
+            if plane.get_center()[axis] < pos {
+                left_count += 1;
+                left_box.grow(plane.origin);
+                left_box.grow(float3_add(plane.origin, plane.u));
+                left_box.grow(float3_add(plane.origin, plane.v));
+            } else {
+                right_count += 1;
+                right_box.grow(plane.origin);
+                right_box.grow(float3_add(plane.origin, plane.u));
+                right_box.grow(float3_add(plane.origin, plane.v));
+            }
+        }
+        let cost = left_count as f32 * left_box.area() + right_count as f32 * right_box.area();
+        if cost > 0.0 {return cost} else {return 1e30f32}
     }
 }
+
+struct aabb {
+    bmin : Float3,
+    bmax : Float3
+}
+
+impl Default for aabb {
+    fn default() -> Self {
+        aabb{bmin : Float3::single(1e30f32), bmax : Float3::single(-1e30f32)}
+    }
+}
+impl aabb {
+    fn grow (&mut self, point : Float3) {
+        self.bmin = self.bmin.fminf(point);
+        self.bmax = self.bmax.fmaxf(point);
+    }
+    fn area (&self) -> f32 {
+        let e = float3_subtract(self.bmax, self.bmin);
+        e.0 * e.1 + e.1 * e.2 + e.2 * e.0
+    }
+
+}
+
 
 fn build_bvh (n : usize, planes : Vec<Plane>) -> (Vec<BVHNode>, Vec<u32>) {
     let mut nodes : Vec<BVHNode> = Vec::with_capacity(2 * n - 1);
@@ -148,7 +203,7 @@ fn build_bvh (n : usize, planes : Vec<Plane>) -> (Vec<BVHNode>, Vec<u32>) {
         plane_indices.push(i as u32);
     }
     let mut root = BVHNode::new(0, n as u32);
-    let nodes_used = 1;
+    // let nodes_used = 1;
     root.update_node_bounds(&planes, &plane_indices);
     nodes.push(root.clone());
     root.subdivide(&planes, &plane_centers, &mut plane_indices, &mut nodes);
@@ -176,8 +231,7 @@ fn gen_pixels () -> Vec<(u32, u32)> {
 
 fn random_pixels (width : u64, height : u64, pixels : &mut Vec<(u32, u32)>, original : &Vec<(u32, u32)>) -> Vec<(u32, u32)> {
     let mut pixel_update_data : Vec<(u32,u32)> = Vec::with_capacity((height * width) as usize);
-    let pixel_chunk_size = 4;
-    for _ in 0..height*width / (pixel_chunk_size * pixel_chunk_size) {
+    for _ in 0..height*width {
         if let Some(pixel) = pixels.pop() {
             pixel_update_data.push(pixel);
         } else {
@@ -191,7 +245,7 @@ struct ray {
     ori : Float3,
     dir : Float3
 }
-fn intersect_aabb(beam : &ray , bmin : Float3, bmax : Float3) -> bool{
+fn intersect_aabb(beam : &ray , bmin : Float3, bmax : Float3) -> bool {
     let tx1 = (bmin.0 - beam.ori.0) / beam.dir.0;
     let tx2 = (bmax.0 - beam.ori.0) / beam.dir.0;
     // println!("tx");
@@ -229,37 +283,37 @@ fn main() {
 
     let mut mirrors : Vec<Plane> = Vec::new();
     let mut materials : Vec<bool> = Vec::new();
-    // for i in 0..10 {
-    //     if i % 2 == 0 {
-    //         //continue;
-    //     }
-    //     mirrors.push(Plane::new(
-    //         Float3(-10.0 + (i as f32 * 2.0), 0.0, 15.0 - (5i8 - i).abs() as f32),
-    //         Float3(3.0, 0.0, (random::<f32>() - 0.5) * 2.0),
-    //         Float3(0.0, 3.0, (random::<f32>() - 0.5) * 2.0),
-    //         Float3(i as f32 / 10.0, (10.0 - i as f32) / 10.0, (5.0 - i as f32).abs() / 10.0)
-    //     ));
-    //     if i % 3 == 0 {
-    //         materials.push(true);
-    //     } else {
-    //         materials.push(false);
-    //     }
-    // }
-    for i in -5..5 {
-        for j in -5..5 {
-            mirrors.push(Plane::new(
-                Float3((i * 5) as f32 + random::<f32>(), random::<f32>(), (j * 5) as f32 +  random::<f32>()),
-                Float3(random::<f32>() * 3.0, 0.0, random::<f32>() * 3.0),
-                Float3(0.0, random::<f32>() * 3.0, random::<f32>() * 3.0),
-                Float3(random::<f32>(), random::<f32>(), random::<f32>())
-            ));
-        }
+    for i in 0..10 {
         if i % 2 == 0 {
+            continue;
+        }
+        mirrors.push(Plane::new(
+            Float3(-10.0 + (i as f32 * 2.0), 0.0, 15.0 - (5i8 - i).abs() as f32),
+            Float3(3.0, 0.0, (random::<f32>() - 0.5) * 2.0),
+            Float3(0.0, 3.0, (random::<f32>() - 0.5) * 2.0),
+            Float3(i as f32 / 10.0, (10.0 - i as f32) / 10.0, (5.0 - i as f32).abs() / 10.0)
+        ));
+        if i % 3 == 0 {
             materials.push(true);
         } else {
-            materials.push(true);
+            materials.push(false);
         }
     }
+    // for i in -3..3 {
+    //     for j in -3..3 {
+    //         mirrors.push(Plane::new(
+    //             Float3((i * 5) as f32 + random::<f32>(), random::<f32>(), (j * 5) as f32 +  random::<f32>()),
+    //             Float3(random::<f32>() * 3.0, 0.0, random::<f32>() * 3.0),
+    //             Float3(0.0, random::<f32>() * 3.0, random::<f32>() * 3.0),
+    //             Float3(random::<f32>(), random::<f32>(), random::<f32>())
+    //         ));
+    //     }
+    //     if i % 2 == 0 {
+    //         materials.push(true);
+    //     } else {
+    //         materials.push(true);
+    //     }
+    // }
     mirrors.push(Plane::new(
         Float3(-9.0, -4.0, -25.0),
         Float3(18.0, 0.0, 0.0),
@@ -297,6 +351,7 @@ fn main() {
             }
         }
     }
+
     //Many macOS api calls are main thread only
     let mtm = MainThreadMarker::new().expect("Current thread isn't safe?");
 
@@ -352,9 +407,10 @@ fn main() {
     let threadgroup_height = compute_pipeline_state.max_total_threads_per_threadgroup() / threadgroup_width;
     let threads_per_threadgroup = MTLSize::new(threadgroup_width, threadgroup_height, 1);
 
-    let threadgroups_per_grid = MTLSize::new((view_width / 4.0) as u64, (view_height / 4.0) as u64, 1);
+    let threadgroups_per_grid = MTLSize::new((view_width / 16.0) as u64, (view_height / 16.0) as u64, 1);
     println!("{}", compute_pipeline_state.max_total_threads_per_threadgroup());
     println!("{threadgroup_width}, {threadgroup_height}");
+    println!("{}", threadgroups_per_grid.height * threadgroups_per_grid.width);
 
     unsafe {
         app.finishLaunching();
@@ -433,7 +489,7 @@ fn main() {
 
     let mirror_count_data = vec![mirrors.len() as u32];
 
-    let fps = 30.0;
+    let fps = 60.0;
     let mut frames = 0;
     let mut frame_time = get_next_frame(fps);
 
@@ -441,6 +497,37 @@ fn main() {
     let mut rot_updated = false;
 
     println!("Starting (this might take a second!)");
+    //Get a texture from the MetalLayer that we can actually draw to
+    let drawable = layer.next_drawable().expect("Unable to find drawable");
+    let texture = drawable.texture();
+
+    //Create a new command buffer and an encoder to write to it
+    let command_buffer = command_queue.new_command_buffer();
+    let render_pass = new_render_pass_descriptor(texture);
+    let compute_encoder = command_buffer.new_compute_command_encoder();
+
+    compute_encoder.set_compute_pipeline_state(&compute_pipeline_state);
+    compute_encoder.set_buffer(0, Some(&pixel_update_buf), 0);
+    compute_encoder.set_buffer(1, Some(&mirror_buf), 0);
+    compute_encoder.set_buffer(2, Some(&node_buf), 0);
+    compute_encoder.set_buffer(3, Some(&index_buf), 0);
+    compute_encoder.set_buffer(4, Some(&cam_buf), 0);
+    compute_encoder.set_buffer(5, Some(&mat_buf), 0);
+    // compute_encoder.set_bytes(6, size_of::<u32>() as u64, mirror_count_data.as_ptr() as *const _);
+    compute_encoder.set_texture(0, Some(&screen_tex));
+    compute_encoder.set_texture(1, Some(&noise_tex));
+    //compute_encoder.set_threadgroup_memory_length(0, 16);
+    compute_encoder.dispatch_thread_groups(threadgroups_per_grid, threads_per_threadgroup);
+    compute_encoder.end_encoding();
+
+    let encoder = command_buffer.new_render_command_encoder(render_pass);
+    encoder.set_render_pipeline_state(&render_pipeline_state);
+    encoder.set_vertex_buffer(0, Some(&quad_buf), 0);
+    encoder.set_fragment_texture(0, Some(&screen_tex));
+    encoder.draw_primitives(MTLPrimitiveType::TriangleStrip, 0, 4);
+    encoder.end_encoding();
+    command_buffer.present_drawable(&drawable);
+    command_buffer.commit();
     loop {
         autoreleasepool(|| {
 
@@ -487,6 +574,7 @@ fn main() {
                 let render_pass = new_render_pass_descriptor(texture);
                 let compute_encoder = command_buffer.new_compute_command_encoder();
 
+                // println!("aaaand..");
                 compute_encoder.set_compute_pipeline_state(&compute_pipeline_state);
                 compute_encoder.set_buffer(0, Some(&pixel_update_buf), 0);
                 compute_encoder.set_buffer(1, Some(&mirror_buf), 0);
@@ -506,7 +594,7 @@ fn main() {
                 encoder.set_vertex_buffer(0, Some(&quad_buf), 0);
                 encoder.set_fragment_texture(0, Some(&screen_tex));
                 encoder.draw_primitives(MTLPrimitiveType::TriangleStrip, 0, 4);
-
+                // println!("Go!");
                 encoder.end_encoding();
                 command_buffer.present_drawable(&drawable);
                 command_buffer.commit();
