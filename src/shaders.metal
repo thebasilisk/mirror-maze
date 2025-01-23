@@ -232,7 +232,7 @@ kernel void compute_shader (
     uint2 dimensions [[ threads_per_threadgroup ]]
 ) {
     //tgid.y * grid width
-    uint pixel_buffer_index = tgid.x + tgid.y * (1024/16);
+    uint pixel_buffer_index = tgid.x + tgid.y * ((1024 / 2) / 16);
     uint2 pixel = pixel_update_buffer[pixel_buffer_index];
 
     uint total_threads = dimensions.x * dimensions.y;

@@ -1,7 +1,7 @@
 mod utils;
 mod maths;
 
-use std::{ffi::c_float, mem, time::Instant};
+use std::{ffi::c_float, mem};
 
 use rand::{random, seq::SliceRandom, thread_rng};
 use objc::rc::autoreleasepool;
@@ -407,7 +407,7 @@ fn main() {
     let threadgroup_height = compute_pipeline_state.max_total_threads_per_threadgroup() / threadgroup_width;
     let threads_per_threadgroup = MTLSize::new(threadgroup_width, threadgroup_height, 1);
 
-    let threadgroups_per_grid = MTLSize::new((view_width / 16.0) as u64, (view_height / 16.0) as u64, 1);
+    let threadgroups_per_grid = MTLSize::new((view_width / 2.0 / 16.0) as u64, (view_height / 2.0 / 16.0) as u64, 1);
     println!("{}", compute_pipeline_state.max_total_threads_per_threadgroup());
     println!("{threadgroup_width}, {threadgroup_height}");
     println!("{}", threadgroups_per_grid.height * threadgroups_per_grid.width);
@@ -496,11 +496,11 @@ fn main() {
 
     let mirror_count_data = vec![mirrors.len() as u32];
 
-    let fps = 60.0;
+    let fps = 60.0f32;
     let mut frames = 0;
-    let mut frame_time = get_next_frame(fps);
+    let mut frame_time = get_next_frame(fps as f64);
 
-    let mut key_pressed = 112;
+    let mut keys_pressed = vec![112];
     let mut rot_updated = false;
 
     println!("Starting (this might take a second!)");
@@ -545,7 +545,7 @@ fn main() {
                 unsafe {app.terminate(None)};
             }
             if unsafe { frame_time.compare(&NSDate::now()) } == NSComparisonResult::Ascending {
-                frame_time = get_next_frame(fps);
+                frame_time = get_next_frame(fps as f64);
                 frames += 1;
                 // if frames % 120 == 0 {
                 //     original_pixels.shuffle(&mut rng);
@@ -553,12 +553,14 @@ fn main() {
                 let pixel_data = random_pixels(threadgroups_per_grid.width, threadgroups_per_grid.height, &mut pixels, &original_pixels);
                 copy_to_buf(&pixel_data, &pixel_update_buf);
 
-                match key_pressed {
-                    0 => camera_center = float3_subtract(camera_center, quat_mult(Float3(0.2, 0.0, 0.0), quat)),
-                    1 => camera_center = float3_subtract(camera_center, quat_mult(Float3(0.0, 0.0, 0.2), quat)),
-                    2 => camera_center = float3_add(camera_center, quat_mult(Float3(0.2, 0.0, 0.0), quat)),
-                    13 => camera_center = float3_add(camera_center, quat_mult(Float3(0.0, 0.0, 0.2), quat)),
-                    _ => ()
+                for key in keys_pressed.iter() {
+                    match key {
+                        0 => camera_center = float3_subtract(camera_center, quat_mult(Float3(2.0 / fps, 0.0, 0.0), quat)),
+                        1 => camera_center = float3_subtract(camera_center, quat_mult(Float3(0.0, 0.0, 2.0 / fps), quat)),
+                        2 => camera_center = float3_add(camera_center, quat_mult(Float3(2.0 / fps, 0.0, 0.0), quat)),
+                        13 => camera_center = float3_add(camera_center, quat_mult(Float3(0.0, 0.0, 2.0 / fps), quat)),
+                        _ => ()
+                    }
                 }
 
                 if rot_updated {
@@ -619,11 +621,13 @@ fn main() {
                         unsafe{
                             match e.r#type() {
                                 NSEventType::KeyDown => {
-                                    key_pressed = e.keyCode();
+                                    if !keys_pressed.contains(&e.keyCode()) {
+                                        keys_pressed.push(e.keyCode());
+                                    }
                                 },
                                 NSEventType::KeyUp => {
-                                    if key_pressed == e.keyCode() {
-                                        key_pressed = 112;
+                                    if let Some(index) = keys_pressed.iter().position(|key| key == &e.keyCode()) {
+                                        keys_pressed.remove(index);
                                     }
                                 },
                                 NSEventType::MouseMoved => {
