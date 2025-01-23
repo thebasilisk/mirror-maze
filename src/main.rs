@@ -212,10 +212,10 @@ fn build_bvh (n : usize, planes : Vec<Plane>) -> (Vec<BVHNode>, Vec<u32>) {
 }
 
 
-fn gen_pixels () -> Vec<(u32, u32)> {
+fn gen_pixels (view_width : f32, view_height : f32) -> Vec<(u32, u32)> {
     let pixel_chunk_size = 4;
-    let width = 512 / pixel_chunk_size;
-    let height = 384 / pixel_chunk_size;
+    let width = view_width as u32 / pixel_chunk_size;
+    let height = view_height as u32 / pixel_chunk_size;
     let mut out_pixels : Vec<(u32, u32)> = Vec::with_capacity((width*height) as usize);
 
     for i in 0..width {
@@ -363,8 +363,8 @@ fn main() {
         NSWindowStyleMask::Titled.union(
         NSWindowStyleMask::Closable);
 
-    let view_width : f32 = 1024.0 / 2.0;
-    let view_height : f32 = 768.0 / 2.0;
+    let view_width : f32 = 1024.0;
+    let view_height : f32 = 768.0;
 
     //Initializes an NSWindow object with a size, backing color, title, and style_mask
     let window = initialize_window(
@@ -462,7 +462,7 @@ fn main() {
     let screen_tex = device.new_texture(&screen_tex_descriptor);
 
     println!("Generating pixel addresses..");
-    let original_pixels = gen_pixels();
+    let original_pixels = gen_pixels(view_width, view_height);
     let mut pixels = original_pixels.clone();
     let initial_pixel_data = random_pixels(threadgroups_per_grid.width, threadgroups_per_grid.height, &mut pixels, &original_pixels);
     println!("Done!");

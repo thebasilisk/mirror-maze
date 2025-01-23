@@ -232,7 +232,7 @@ kernel void compute_shader (
     uint2 dimensions [[ threads_per_threadgroup ]]
 ) {
     //tgid.y * grid width
-    uint pixel_buffer_index = tgid.x + tgid.y * (512/16);
+    uint pixel_buffer_index = tgid.x + tgid.y * (1024/16);
     uint2 pixel = pixel_update_buffer[pixel_buffer_index];
 
     uint total_threads = dimensions.x * dimensions.y;
@@ -247,7 +247,7 @@ kernel void compute_shader (
 
     //threadgroup float3 pixel_colors[32*32];
 
-    float2 pos_norm = float2(pixel.x / 512.0, pixel.y / 384.0);
+    float2 pos_norm = float2(pixel.x / 1024.0, pixel.y / 768.0);
     float3 viewport_corner = cam.camera_center - float3(cam.viewport.x / 2.0, cam.viewport.y / 2.0, -cam.focal_length);
     float3 ray_dir = normalize((viewport_corner + float3(pos_norm.x * cam.viewport.x, pos_norm.y * cam.viewport.y, 0.0)) - cam.camera_center);
     ray_dir = quat_mult(ray_dir, cam.rotation);
