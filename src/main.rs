@@ -420,7 +420,8 @@ fn main() {
     };
 
     //load noise for rng and put into metal texture
-    let noise_path = init_nsstring("/Users/basil/rust-projects/mirror-maze/textures/noiseTexture.png", mtm);
+    println!("Loading noise image");
+    let noise_path = init_nsstring("/Users/basil/rust-projects/mirror-maze/textures/noiseTexture-2.png", mtm);
     let noise_image = unsafe {
         NSImage::initWithContentsOfFile(mtm.alloc::<NSImage>(), &noise_path).unwrap()
     };
@@ -430,12 +431,15 @@ fn main() {
     // let bitmap = unsafe { NSBitmapImageRep::init };
     let bitmap = unsafe { NSBitmapImageRep::initWithData(mtm.alloc::<NSBitmapImageRep>(), &noise_data).unwrap() };
 
+    println!("Creating noise texture from image");
     let noise_width = 512;
     let noise_height = 512;
     let tex_descriptor = TextureDescriptor::new();
     tex_descriptor.set_pixel_format(MTLPixelFormat::RGBA8Unorm);
     tex_descriptor.set_width(noise_width);
     tex_descriptor.set_height(noise_height);
+
+    println!("...");
 
     let noise_tex = device.new_texture(&tex_descriptor);
     let region = MTLRegion::new_2d(0, 0, noise_width, noise_height);
@@ -444,6 +448,7 @@ fn main() {
 
     let tex_usage = MTLTextureUsage::ShaderRead.union(MTLTextureUsage::ShaderWrite);
 
+    println!("Creating screen texture");
     // let screen_tex_width = view_width as u64 * threadgroup_width;
     // let screen_tex_height = view_height as u64 * threadgroup_height;
     let screen_tex_descriptor = TextureDescriptor::new();
@@ -456,9 +461,11 @@ fn main() {
 
     let screen_tex = device.new_texture(&screen_tex_descriptor);
 
+    println!("Generating pixel addresses..");
     let original_pixels = gen_pixels();
     let mut pixels = original_pixels.clone();
     let initial_pixel_data = random_pixels(threadgroups_per_grid.width, threadgroups_per_grid.height, &mut pixels, &original_pixels);
+    println!("Done!");
     let pixel_update_buf = make_buf(&initial_pixel_data, &device);
 
     let quad : Vec<Float3> = vec![
