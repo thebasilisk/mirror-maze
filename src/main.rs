@@ -3,9 +3,10 @@ mod maths;
 
 use std::{ffi::c_float, mem};
 
+use objc2::rc::Retained;
 use rand::{random, seq::SliceRandom, thread_rng};
 use objc::rc::autoreleasepool;
-use objc2_app_kit::{NSAnyEventMask, NSApp, NSApplication, NSApplicationActivationPolicy, NSBitmapImageRep, NSEventType, NSImage, NSWindowStyleMask};
+use objc2_app_kit::{NSAnyEventMask, NSApp, NSApplication, NSApplicationActivationPolicy, NSBitmapImageRep, NSEventType, NSImage, NSWindowStyleMask, NSCursor};
 use objc2_foundation::{MainThreadMarker, NSComparisonResult, NSDate, NSDefaultRunLoopMode};
 use utils::{copy_to_buf, get_library, get_next_frame, init_nsstring, initialize_window, make_buf, new_metal_layer, new_render_pass_descriptor, prepare_pipeline_state, set_window_layer};
 use maths::{calculate_quaternion, float3_add, float3_subtract, quat_mult, scale3, update_quat_angle, Float2, Float3, Float4};
@@ -188,7 +189,14 @@ impl aabb {
         let e = float3_subtract(self.bmax, self.bmin);
         e.0 * e.1 + e.1 * e.2 + e.2 * e.0
     }
-
+    fn intersect (&self, other : aabb) -> bool {
+        self.bmin.0 <= other.bmax.0 &&
+        self.bmax.0 >= other.bmin.0 &&
+        self.bmin.1 <= other.bmax.1 &&
+        self.bmax.1 >= other.bmin.1 &&
+        self.bmin.2 <= other.bmax.2 &&
+        self.bmax.2 >= other.bmin.2
+    }
 }
 
 
@@ -211,6 +219,28 @@ fn build_bvh (n : usize, planes : Vec<Plane>) -> (Vec<BVHNode>, Vec<u32>) {
     (nodes, plane_indices)
 }
 
+fn check_collision (nodes : &Vec<BVHNode>, bbox : &aabb, node_index : usize) -> Option<usize> {
+    let node = &nodes[node_index];
+    if node.tri_count == 1 {
+        if bbox.intersect(aabb { bmin: node.aabb_min, bmax: node.aabb_max }) {
+            return Some(node_index);
+        } else {
+            return None;
+        }
+    }
+    if bbox.intersect(aabb { bmin: node.aabb_min, bmax: node.aabb_max }) {
+
+        if let Some(hit) = check_collision(nodes, bbox, node.left_first as usize) {
+            return Some(hit);
+        }
+        if let Some(hit) = check_collision(nodes, bbox, node.left_first as usize + 1) {
+            return Some(hit);
+        }
+    } else {
+        return None;
+    }
+    None
+}
 
 fn gen_pixels (view_width : f32, view_height : f32) -> Vec<(u32, u32)> {
     let pixel_chunk_size = 4;
@@ -283,22 +313,24 @@ fn main() {
 
     let mut mirrors : Vec<Plane> = Vec::new();
     let mut materials : Vec<bool> = Vec::new();
-    for i in 0..10 {
-        if i % 2 == 0 {
-            //continue;
-        }
-        mirrors.push(Plane::new(
-            Float3(-10.0 + (i as f32 * 2.0), 0.0, 15.0 - (5i8 - i).abs() as f32),
-            Float3(3.0, 0.0, (random::<f32>() - 0.5) * 2.0),
-            Float3(0.0, 3.0, (random::<f32>() - 0.5) * 2.0),
-            Float3(i as f32 / 10.0, (10.0 - i as f32) / 10.0, (5.0 - i as f32).abs() / 10.0)
-        ));
-        if i % 3 == 0 {
-            materials.push(true);
-        } else {
-            materials.push(false);
-        }
-    }
+
+    let wall_color = Float3(0.3, 0.35, 0.4);
+    // for i in 0..10 {
+    //     if i % 2 == 0 {
+    //         //continue;
+    //     }
+    //     mirrors.push(Plane::new(
+    //         Float3(-10.0 + (i as f32 * 2.0), 0.0, 15.0 - (5i8 - i).abs() as f32),
+    //         Float3(3.0, 0.0, (random::<f32>() - 0.5) * 2.0),
+    //         Float3(0.0, 3.0, (random::<f32>() - 0.5) * 2.0),
+    //         Float3(i as f32 / 10.0, (10.0 - i as f32) / 10.0, (5.0 - i as f32).abs() / 10.0)
+    //     ));
+    //     if i % 3 == 0 {
+    //         materials.push(true);
+    //     } else {
+    //         materials.push(false);
+    //     }
+    // }
     // for i in -10..10 {
     //     for j in -10..10 {
     //         mirrors.push(Plane::new(
@@ -315,19 +347,412 @@ fn main() {
     //     }
     // }
     mirrors.push(Plane::new(
-        Float3(-9.0, -4.0, -25.0),
-        Float3(18.0, 0.0, 0.0),
-        Float3(0.0, 8.0, 0.0),
+        Float3(-50.0, 2.0, -50.0),
+        Float3(0.0, -20.0, 0.0),
+        Float3(100.0, 0.0, 0.0),
         Float3(0.0, 0.4, 0.1)
     ));
     materials.push(true);
     mirrors.push(Plane::new(
-        Float3(-9.0, -4.0, 25.0),
-        Float3(0.0, 8.0, 0.0),
-        Float3(18.0, 0.0, 0.0),
+        Float3(-50.0, 2.0, 50.0),
+        Float3(100.0, 0.0, 0.0),
+        Float3(0.0, -20.0, 0.0),
         Float3(0.0, 0.4, 0.1)
     ));
     materials.push(true);
+    mirrors.push(Plane::new(
+        Float3(-50.0, 2.0, -50.0),
+        Float3(0.0, 0.0, 100.0),
+        Float3(0.0, -20.0, 0.0),
+        Float3(0.0, 0.4, 0.1)
+    ));
+    materials.push(true);
+    mirrors.push(Plane::new(
+        Float3(50.0, 2.0, -50.0),
+        Float3(0.0, -20.0, 0.0),
+        Float3(0.0, 0.0, 100.0),
+        Float3(0.0, 0.4, 0.1)
+    ));
+    materials.push(true);
+    mirrors.push(Plane::new(
+        Float3(-50.0, 2.0, 50.0),
+        Float3(0.0, 0.0, -100.0),
+        Float3(100.0, 0.0, 0.0),
+        Float3(0.4, 0.45, 0.3)
+    ));
+    materials.push(false);
+
+    //maze part
+
+    mirrors.push(Plane::new(
+        Float3(-40.0, 2.0, -20.0),
+        Float3(0.0, 0.0, 10.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(-40.0, 2.0, 0.0),
+        Float3(0.0, 0.0, 20.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+
+    mirrors.push(Plane::new(
+        Float3(-30.0, 2.0, -50.0),
+        Float3(0.0, 0.0, 30.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(-30.0, 2.0, -10.0),
+        Float3(0.0, 0.0, 20.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(-30.0, 2.0, 30.0),
+        Float3(0.0, 0.0, 10.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+
+    mirrors.push(Plane::new(
+        Float3(-20.0, 2.0, -20.0),
+        Float3(0.0, 0.0, 10.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(-20.0, 2.0, 10.0),
+        Float3(0.0, 0.0, 20.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+
+
+    mirrors.push(Plane::new(
+        Float3(-10.0, 2.0, -10.0),
+        Float3(0.0, 0.0, 30.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(-10.0, 2.0, 30.0),
+        Float3(0.0, 0.0, 20.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+
+
+    mirrors.push(Plane::new(
+        Float3(0.0, 2.0, -30.0),
+        Float3(0.0, 0.0, 10.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(0.0, 2.0, -10.0),
+        Float3(0.0, 0.0, 40.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(0.0, 2.0, 40.0),
+        Float3(0.0, 0.0, 10.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+
+    mirrors.push(Plane::new(
+        Float3(10.0, 2.0, -40.0),
+        Float3(0.0, 0.0, 10.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(10.0, 2.0, -20.0),
+        Float3(0.0, 0.0, 10.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(10.0, 2.0, 0.0),
+        Float3(0.0, 0.0, 10.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(10.0, 2.0, 30.0),
+        Float3(0.0, 0.0, 10.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+
+
+    mirrors.push(Plane::new(
+        Float3(20.0, 2.0, -50.0),
+        Float3(0.0, 0.0, 10.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(20.0, 2.0, -10.0),
+        Float3(0.0, 0.0, 10.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(20.0, 2.0, 10.0),
+        Float3(0.0, 0.0, 20.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(20.0, 2.0, 40.0),
+        Float3(0.0, 0.0, 10.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+
+
+    mirrors.push(Plane::new(
+        Float3(30.0, 2.0, -20.0),
+        Float3(0.0, 0.0, 10.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(30.0, 2.0, 10.0),
+        Float3(0.0, 0.0, 10.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+
+
+    mirrors.push(Plane::new(
+        Float3(40.0, 2.0, -20.0),
+        Float3(0.0, 0.0, 30.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(40.0, 2.0, 20.0),
+        Float3(0.0, 0.0, 20.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+
+
+    mirrors.push(Plane::new(
+        Float3(-50.0, 2.0, -40.0),
+        Float3(10.0, 0.0, 0.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(-20.0, 2.0, -40.0),
+        Float3(30.0, 0.0, 0.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(20.0, 2.0, -40.0),
+        Float3(20.0, 0.0, 0.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+
+
+    mirrors.push(Plane::new(
+        Float3(-50.0, 2.0, -30.0),
+        Float3(10.0, 0.0, 0.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(-20.0, 2.0, -30.0),
+        Float3(20.0, 0.0, 0.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(10.0, 2.0, -30.0),
+        Float3(30.0, 0.0, 0.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+
+
+    mirrors.push(Plane::new(
+        Float3(-40.0, 2.0, -20.0),
+        Float3(10.0, 0.0, 0.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(-20.0, 2.0, -20.0),
+        Float3(50.0, 0.0, 0.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+
+    mirrors.push(Plane::new(
+        Float3(-30.0, 2.0, -10.0),
+        Float3(10.0, 0.0, 0.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(0.0, 2.0, -10.0),
+        Float3(10.0, 0.0, 0.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+
+
+    mirrors.push(Plane::new(
+        Float3(-30.0, 2.0, 0.0),
+        Float3(20.0, 0.0, 0.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(10.0, 2.0, 0.0),
+        Float3(30.0, 0.0, 0.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+
+
+    mirrors.push(Plane::new(
+        Float3(10.0, 2.0, 10.0),
+        Float3(10.0, 0.0, 0.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(30.0, 2.0, 10.0),
+        Float3(20.0, 0.0, 0.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+
+
+    mirrors.push(Plane::new(
+        Float3(-50.0, 2.0, 20.0),
+        Float3(20.0, 0.0, 0.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(0.0, 2.0, 20.0),
+        Float3(10.0, 0.0, 0.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(30.0, 2.0, 20.0),
+        Float3(10.0, 0.0, 0.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+
+
+    mirrors.push(Plane::new(
+        Float3(-40.0, 2.0, 30.0),
+        Float3(40.0, 0.0, 0.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(10.0, 2.0, 30.0),
+        Float3(20.0, 0.0, 0.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+
+
+    mirrors.push(Plane::new(
+        Float3(-50.0, 2.0, 40.0),
+        Float3(10.0, 0.0, 0.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(-30.0, 2.0, 40.0),
+        Float3(10.0, 0.0, 0.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(0.0, 2.0, 40.0),
+        Float3(10.0, 0.0, 0.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(30.0, 2.0, 40.0),
+        Float3(10.0, 0.0, 0.0),
+        Float3(0.0, -10.0, 0.0),
+        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+    ));
+    materials.push(false);
+
+
+    mirrors.push(Plane::new(
+        Float3(-10.0, 2.0, 50.0),
+        Float3(10.0, 0.0, 0.0),
+        Float3(0.0, -10.0, 0.0),
+        Float3(0.5, 0.2, 0.1)
+    ));
+    materials.push(false);
+
 
     println!("Total: {:?}", mirrors.len());
     let (nodes, indices) = build_bvh(mirrors.len(), mirrors.clone());
@@ -363,8 +788,8 @@ fn main() {
         NSWindowStyleMask::Titled.union(
         NSWindowStyleMask::Closable);
 
-    let view_width : f32 = 1024.0;
-    let view_height : f32 = 768.0;
+    let view_width : f32 = 1024.0 / 2.0;
+    let view_height : f32 = 768.0 / 2.0;
 
     //Initializes an NSWindow object with a size, backing color, title, and style_mask
     let window = initialize_window(
@@ -485,8 +910,10 @@ fn main() {
     let viewport_height = 2.0;
     let viewport_width = viewport_height * (view_width as f32 / view_height as f32);
 
-    let mut camera_center = Float3(0.0, 0.0, 0.0);
+    let mut camera_center = Float3(0.0, 0.0, -45.0);
     let focal_length = 1.0;
+
+    let player_diag = Float3(0.5, 0.2, 0.5);
 
     let mut quat = calculate_quaternion(&Float3(0.1, 0.0, 1.0));
     let mut half_theta = quat.3.acos();
@@ -535,6 +962,7 @@ fn main() {
     encoder.end_encoding();
     command_buffer.present_drawable(&drawable);
     command_buffer.commit();
+
     loop {
         autoreleasepool(|| {
 
@@ -552,20 +980,29 @@ fn main() {
                 // }
                 let pixel_data = random_pixels(threadgroups_per_grid.width, threadgroups_per_grid.height, &mut pixels, &original_pixels);
                 copy_to_buf(&pixel_data, &pixel_update_buf);
-
+                let prev_cam_center = camera_center.clone();
                 for key in keys_pressed.iter() {
                     match key {
-                        0 => camera_center = float3_subtract(camera_center, quat_mult(Float3(2.0 / fps, 0.0, 0.0), quat)),
-                        1 => camera_center = float3_subtract(camera_center, quat_mult(Float3(0.0, 0.0, 2.0 / fps), quat)),
-                        2 => camera_center = float3_add(camera_center, quat_mult(Float3(2.0 / fps, 0.0, 0.0), quat)),
-                        13 => camera_center = float3_add(camera_center, quat_mult(Float3(0.0, 0.0, 2.0 / fps), quat)),
+                        0 => camera_center = float3_subtract(camera_center, quat_mult(Float3(10.0 / fps, 0.0, 0.0), quat)),
+                        1 => camera_center = float3_subtract(camera_center, quat_mult(Float3(0.0, 0.0, 10.0 / fps), quat)),
+                        2 => camera_center = float3_add(camera_center, quat_mult(Float3(10.0 / fps, 0.0, 0.0), quat)),
+                        13 => camera_center = float3_add(camera_center, quat_mult(Float3(0.0, 0.0, 10.0 / fps), quat)),
                         _ => ()
                     }
                 }
 
+                if let Some(hit) = check_collision(&nodes, &aabb{ bmin : float3_subtract(camera_center, player_diag), bmax : float3_add(camera_center, player_diag)}, 0) {
+                    camera_center = prev_cam_center;
+                }
+
                 if rot_updated {
-                    quat = update_quat_angle(&quat, half_theta);
-                    pixels.splice(0..0, original_pixels.clone());
+                    let new_quat = update_quat_angle(&quat, half_theta);
+                    if new_quat.0.is_nan() || new_quat.1.is_nan() || new_quat.2.is_nan() || new_quat.3.is_nan() {
+                        println!("Help!");
+                    } else {
+                        quat = new_quat;
+                        pixels.splice(0..0, original_pixels.clone());
+                    }
                     rot_updated = false;
                 }
                 if quat.0.is_nan() || quat.1.is_nan() || quat.2.is_nan() || quat.3.is_nan() {
@@ -634,7 +1071,7 @@ fn main() {
                                     half_theta = (half_theta - e.deltaX() as f32 / 512.0).rem_euclid(std::f32::consts::PI);
                                     rot_updated = true;
                                     // println!("{}", half_theta);
-                                }
+                                },
                                 _ => {
 
                                 }

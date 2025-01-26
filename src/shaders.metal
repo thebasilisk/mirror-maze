@@ -232,7 +232,7 @@ kernel void compute_shader (
     uint2 dimensions [[ threads_per_threadgroup ]]
 ) {
     //tgid.y * grid width
-    uint pixel_buffer_index = tgid.x + tgid.y * ((1024 / 2) / 16);
+    uint pixel_buffer_index = tgid.x + tgid.y * ((512 / 2) / 16);
     uint2 pixel = pixel_update_buffer[pixel_buffer_index];
 
     uint total_threads = dimensions.x * dimensions.y;
@@ -247,7 +247,7 @@ kernel void compute_shader (
 
     //threadgroup float3 pixel_colors[32*32];
 
-    float2 pos_norm = float2(pixel.x / 1024.0, pixel.y / 768.0);
+    float2 pos_norm = float2(pixel.x / (1024.0 / 2.0), pixel.y / (768.0 / 2.0));
     float3 viewport_corner = cam.camera_center - float3(cam.viewport.x / 2.0, cam.viewport.y / 2.0, -cam.focal_length);
     float3 ray_dir = normalize((viewport_corner + float3(pos_norm.x * cam.viewport.x, pos_norm.y * cam.viewport.y, 0.0)) - cam.camera_center);
     ray_dir = quat_mult(ray_dir, cam.rotation);
@@ -257,14 +257,15 @@ kernel void compute_shader (
     constexpr sampler s(address::repeat, filter::nearest);
     float3 color = float3(0.0, 0.0, 0.0);
     float4 noise_sample = noise.sample(s, float2(gid));
-    int bounce_limit = 10;
+    int bounce_limit = 5;
+    int mirror_limit = 15;
     float lighting_factor = 0.25;
 
     beam.ori = cam.camera_center;
     beam.dir = ray_dir + (float3(random(noise_sample.xy + float2(gid.xy)), random(noise_sample.xy + float2(gid.yx)), 0.0) * 0.001);
     beam.t = 1e30f;
     int mirror_hits = 0;
-    for (int n = 0; n < bounce_limit; n++) {
+    for (int n = 0; n < bounce_limit + mirror_hits; n++) {
         intersect_bvh_iterative(beam, nodes, mirrors, indices);
         if (beam.t < 1e30f) {
             float3 mirror_norm = normalize(cross(mirrors[beam.index].v, mirrors[beam.index].u));
@@ -279,10 +280,15 @@ kernel void compute_shader (
                 beam.t = 1e30f;
             } else {
                 mirror_hits++;
-                color += mirrors[beam.index].color * pow(lighting_factor, float(n - mirror_hits)) * 0.05;
-                beam.ori = beam.ori + beam.dir * beam.t;
-                beam.dir = normalize(reflect(beam.dir, mirror_norm));
-                beam.t = 1e30f;
+                if (mirror_hits < mirror_limit) {
+                    color += mirrors[beam.index].color * pow(lighting_factor, float(n - mirror_hits)) * 0.01;
+                    beam.ori = beam.ori + beam.dir * beam.t;
+                    beam.dir = normalize(reflect(beam.dir, mirror_norm));
+                    beam.t = 1e30f;
+                } else {
+                    color += float3(0.3, 0.6, 0.8);
+                    break;
+                }
             }
         } else {
             color += float3(0.3, 0.6, 0.8) * pow(lighting_factor, float(n - mirror_hits));
