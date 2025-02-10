@@ -216,6 +216,14 @@ fragment float4 fragment_shader (
     return float4(color.xyz, 1.0);
 }
 
+kernel void texture_update (
+    const device uint2 *updated_pixels [[ buffer(0) ]],
+    const device packed_float3 *pixel_data [[ buffer(1) ]],
+    texture2d<float, access::write> image [[ texture(0) ]],
+    uint gid [[ thread_position_in_grid ]]
+) {
+    image.write(float4(pixel_data[gid], 1.0), updated_pixels[gid]);
+}
 
 kernel void compute_shader (
     texture2d<float, access::write> texout [[ texture(0) ]],
@@ -226,6 +234,7 @@ kernel void compute_shader (
     const device uint *indices [[ buffer(3) ]],
     const device camera *camera [[ buffer(4) ]],
     const device bool *materials [[ buffer(5) ]],
+    device float4 *pixel_data [[ buffer(6) ]],
     uint2 tgid [[ threadgroup_position_in_grid ]],
     uint2 gid [[ thread_position_in_threadgroup ]],
     uint2 texid [[ thread_position_in_grid ]],
@@ -313,36 +322,19 @@ kernel void compute_shader (
         test[flat_index] += test[flat_index + 4];
     }
     threadgroup_barrier(mem_flags::mem_none);
-    //if (flat_index < (max_index * pixel_number) + (max_index / 2)) {
-    //    test[flat_index] = (test[flat_index] + test[(max_index * (pixel_number + 1)) - flat_index - 1]);
-    //}
-    //threadgroup_barrier(mem_flags::mem_none);
-    //if (flat_index < (max_index * pixel_number) + (max_index / 4)) {
-    //    test[flat_index] = (test[flat_index] + test[(max_index * pixel_number) + (max_index / 2) - flat_index]);
-    //}
-    //threadgroup_barrier(mem_flags::mem_none);
-    //if (flat_index < max_index / 8) {
-    //    test[flat_index] = (test[flat_index] + test[(max_index * pixel_number) + (max_index / 4) - flat_index]);
-    //}
-    //threadgroup_barrier(mem_flags::mem_none);
-    //if (flat_index < max_index / 16) {
-    //    test[flat_index] = (test[flat_index] + test[(max_index * pixel_number) + (max_index / 8) - flat_index]);
-    //}
-    //threadgroup_barrier(mem_flags::mem_none);
-    //if (flat_index < max_index / 32) {
-    //    test[flat_index] = (test[flat_index] + test[(max_index * pixel_number) + (max_index / 16) - flat_index]);
-    //}
-    threadgroup_barrier(mem_flags::mem_none);
-    //if (flat_index < max_index / 64) {
-    //    test[flat_index] = (test[flat_index] + test[(max_index * pixel_number) + (max_index / 32) - flat_index]);
-    //}
-    //threadgroup_barrier(mem_flags::mem_none);
 
     if (flat_index == pixel_number * max_index) {
         for (int i = 1; i < max_index / 8; i++) {
             test[pixel_number * max_index] += test[pixel_number * max_index + (8 * i)];
         }
         test[pixel_number * max_index] = test[pixel_number * max_index] / max_index;
+
+        uint packed_pix = pixel.x;
+        packed_pix = (packed_pix << 16) | pixel.y;
+        float float_pix = as_type<float>(packed_pix);
+
+        pixel_data[(pixel_buffer_index * 16) + pixel_number] = float4(test[pixel_number * max_index], float_pix);
         texout.write(float4(test[pixel_number * max_index], 1.0), pixel);
+        //pixel_data[(pixel_buffer_index * 16) + pixel_number] = pixel;
     }
 }

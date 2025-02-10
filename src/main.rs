@@ -1,13 +1,14 @@
 mod utils;
 mod maths;
 
-use std::{ffi::c_float, mem};
+use core::panic;
+use std::{ffi::c_float, mem, net::UdpSocket};
 
 use objc2::rc::Retained;
 use rand::{random, seq::SliceRandom, thread_rng};
 use objc::rc::autoreleasepool;
 use objc2_app_kit::{NSAnyEventMask, NSApp, NSApplication, NSApplicationActivationPolicy, NSBitmapImageRep, NSEventType, NSImage, NSWindowStyleMask, NSCursor};
-use objc2_foundation::{MainThreadMarker, NSComparisonResult, NSDate, NSDefaultRunLoopMode};
+use objc2_foundation::{MainThreadMarker, NSComparisonResult, NSData, NSDate, NSDefaultRunLoopMode};
 use utils::{copy_to_buf, get_library, get_next_frame, init_nsstring, initialize_window, make_buf, new_metal_layer, new_render_pass_descriptor, prepare_pipeline_state, set_window_layer};
 use maths::{calculate_quaternion, float3_add, float3_subtract, quat_mult, scale3, update_quat_angle, Float2, Float3, Float4};
 
@@ -308,6 +309,8 @@ fn intersect_aabb(beam : &ray , bmin : Float3, bmax : Float3) -> bool {
     // println!("{tmax}");
     return tmax >= tmin && tmin < 1e30f32 && tmax > 0.0;
 }
+
+const IMAGE : &[u8] = include_bytes!("/Users/basil/rust-projects/mirror-maze/textures/noiseTexture-2.png");
 
 fn main() {
 
@@ -824,6 +827,7 @@ fn main() {
     );
 
     let compute_function = shader_lib.get_function("compute_shader", None).expect("Could not find compute function in library");
+    let tex_updatefunction = shader_lib.get_function("texture_update", None).unwrap();
     let compute_descriptor = ComputePipelineDescriptor::new();
     compute_descriptor.set_compute_function(Some(&compute_function));
     //let compute_pipeline_state = device.new_compute_pipeline_state_with_function(&compute_function).expect("Error creating compute pipeline");
@@ -832,10 +836,16 @@ fn main() {
     let threadgroup_height = compute_pipeline_state.max_total_threads_per_threadgroup() / threadgroup_width;
     let threads_per_threadgroup = MTLSize::new(threadgroup_width, threadgroup_height, 1);
 
+
     let threadgroups_per_grid = MTLSize::new((view_width / 2.0 / 16.0) as u64, (view_height / 2.0 / 16.0) as u64, 1);
     println!("{}", compute_pipeline_state.max_total_threads_per_threadgroup());
     println!("{threadgroup_width}, {threadgroup_height}");
     println!("{}", threadgroups_per_grid.height * threadgroups_per_grid.width);
+
+    let tex_update_pipeline = device.new_compute_pipeline_state_with_function(&tex_updatefunction).unwrap();
+    let threads = threadgroups_per_grid.width * threadgroups_per_grid.height * 16;
+    let threads_per_grid = MTLSize::new(threads, 1, 1);
+    let threads_per_thread_group = MTLSize::new(threads.min(tex_update_pipeline.max_total_threads_per_threadgroup()), 1, 1);
 
     unsafe {
         app.finishLaunching();
@@ -846,10 +856,8 @@ fn main() {
 
     //load noise for rng and put into metal texture
     println!("Loading noise image");
-    let noise_path = init_nsstring("/Users/basil/rust-projects/mirror-maze/textures/noiseTexture-2.png", mtm);
-    let noise_image = unsafe {
-        NSImage::initWithContentsOfFile(mtm.alloc::<NSImage>(), &noise_path).unwrap()
-    };
+    let image_data = unsafe { NSData::initWithBytes_length(mtm.alloc::<NSData>(), IMAGE.as_ptr() as *mut _, IMAGE.len()) };
+    let noise_image = NSImage::initWithData(mtm.alloc::<NSImage>(), &image_data).expect("Error initializing noise image");
 
     let noise_data = unsafe { noise_image.TIFFRepresentation().unwrap() };
 
@@ -891,7 +899,34 @@ fn main() {
     let mut pixels = original_pixels.clone();
     let initial_pixel_data = random_pixels(threadgroups_per_grid.width, threadgroups_per_grid.height, &mut pixels, &original_pixels);
     println!("Done!");
+
+    let mut all_pixels = Vec::new();
+    let mut dummy_pix = Vec::new();
+    for n in 0..initial_pixel_data.len() {
+        let pix = initial_pixel_data[n];
+        for i in 0..4 {
+            for j in 0..4 {
+                all_pixels.push(Float3(0.0, 0.0, 0.0));
+                all_pixels.push(Float3(0.0, 0.0, 0.0));
+                all_pixels.push(Float3(0.0, 0.0, 0.0));
+                all_pixels.push(Float3(0.0, 0.0, 0.0));
+                dummy_pix.push((pix.0 + i, pix.1 + j));
+                dummy_pix.push((pix.0 + i, pix.1 + j));
+                dummy_pix.push((pix.0 + i, pix.1 + j));
+                dummy_pix.push((pix.0 + i, pix.1 + j));
+            }
+        }
+    }
     let pixel_update_buf = make_buf(&initial_pixel_data, &device);
+    let incoming_pix_buf = make_buf(&dummy_pix, &device);
+    let all_pix_buf = make_buf(&all_pixels, &device);
+
+    let mut pixel_vec : Vec<Float3> = Vec::new();
+    for _ in 0..threadgroups_per_grid.width * threadgroups_per_grid.height * 16 {
+        pixel_vec.push(Float3(0.0, 0.0, 0.0));
+    }
+    // let mut pixel_vec : Vec<Float4> = Vec::new();
+    let pixel_data_buf = make_buf(&pixel_vec, &device);
 
     let quad : Vec<Float3> = vec![
         Float3(-1.0, 1.0, 0.0),
@@ -930,6 +965,14 @@ fn main() {
     let mut keys_pressed = vec![112];
     let mut rot_updated = false;
 
+    let (client, other_addr) = if let Ok(client) =  UdpSocket::bind("127.0.0.1:8080") {
+        (client, "127.0.0.1:8090")
+    } else {
+        let client = UdpSocket::bind("127.0.0.1:8090").expect("Error connecting to either socket");
+        (client, "127.0.0.1:8080")
+    };
+    client.set_nonblocking(true).unwrap();
+
     println!("Starting (this might take a second!)");
     //Get a texture from the MetalLayer that we can actually draw to
     let drawable = layer.next_drawable().expect("Unable to find drawable");
@@ -947,12 +990,21 @@ fn main() {
     compute_encoder.set_buffer(3, Some(&index_buf), 0);
     compute_encoder.set_buffer(4, Some(&cam_buf), 0);
     compute_encoder.set_buffer(5, Some(&mat_buf), 0);
+    compute_encoder.set_buffer(6, Some(&pixel_data_buf), 0);
     // compute_encoder.set_bytes(6, size_of::<u32>() as u64, mirror_count_data.as_ptr() as *const _);
     compute_encoder.set_texture(0, Some(&screen_tex));
     compute_encoder.set_texture(1, Some(&noise_tex));
     //compute_encoder.set_threadgroup_memory_length(0, 16);
     compute_encoder.dispatch_thread_groups(threadgroups_per_grid, threads_per_threadgroup);
     compute_encoder.end_encoding();
+
+    // let texup_encoder = command_buffer.new_compute_command_encoder();
+    // texup_encoder.set_compute_pipeline_state(&tex_update_pipeline);
+    // texup_encoder.set_buffer(0, Some(&all_pix_buf), 0);
+    // texup_encoder.set_buffer(1, Some(&pixel_data_buf), 0);
+    // texup_encoder.set_texture(0, Some(&screen_tex));
+    // texup_encoder.dispatch_threads(threads_per_grid, threads_per_thread_group);
+    // texup_encoder.end_encoding();
 
     let encoder = command_buffer.new_render_command_encoder(render_pass);
     encoder.set_render_pipeline_state(&render_pipeline_state);
@@ -963,6 +1015,13 @@ fn main() {
     command_buffer.present_drawable(&drawable);
     command_buffer.commit();
 
+    let mut i = 0;
+    let div = 6;
+    let mut pixel_bytes : &[u8] = &[];
+    let data_width = 16;
+    let packet_size = threads * data_width / div;
+
+    let mut incoming_pixels :Vec<u8> = Vec::new();
     loop {
         autoreleasepool(|| {
 
@@ -970,6 +1029,8 @@ fn main() {
             // now = Instant::now();
 
             if app.windows().is_empty() {
+                // let pixel_bytes : &[(f32, f32, f32)]= unsafe { std::slice::from_raw_parts(pixel_data_buf.contents().cast(), (threadgroups_per_grid.width * threadgroups_per_grid.height * 16) as usize) };
+                // println!("{pixel_bytes:?}");
                 unsafe {app.terminate(None)};
             }
             if unsafe { frame_time.compare(&NSDate::now()) } == NSComparisonResult::Ascending {
@@ -978,8 +1039,25 @@ fn main() {
                 // if frames % 120 == 0 {
                 //     original_pixels.shuffle(&mut rng);
                 // }
+                incoming_pixels.truncate((threads * data_width * 4) as usize);
                 let pixel_data = random_pixels(threadgroups_per_grid.width, threadgroups_per_grid.height, &mut pixels, &original_pixels);
                 copy_to_buf(&pixel_data, &pixel_update_buf);
+
+                let pixel_floats : Vec<f32> =
+                    incoming_pixels
+                        .chunks_exact(4)
+                        .map(TryInto::try_into)
+                        .map(Result::unwrap)
+                        .map(f32::from_le_bytes)
+                        .collect();
+                let (all_pixels, updated_pixels) : (Vec<Float3>, Vec<(u32, u32)>) =
+                    pixel_floats
+                        .chunks_exact(4)
+                        .map(|chunk|
+                            (Float3(chunk[0], chunk[1], chunk[2]),
+                            ((chunk[3].to_bits() >> 16), (chunk[3].to_bits() as u16) as u32)))
+                        .unzip();
+
                 let prev_cam_center = camera_center.clone();
                 for key in keys_pressed.iter() {
                     match key {
@@ -1028,12 +1106,28 @@ fn main() {
                 compute_encoder.set_buffer(3, Some(&index_buf), 0);
                 compute_encoder.set_buffer(4, Some(&cam_buf), 0);
                 compute_encoder.set_buffer(5, Some(&mat_buf), 0);
+                compute_encoder.set_buffer(6, Some(&pixel_data_buf), 0);
                 // compute_encoder.set_bytes(6, size_of::<u32>() as u64, mirror_count_data.as_ptr() as *const _);
                 compute_encoder.set_texture(0, Some(&screen_tex));
                 compute_encoder.set_texture(1, Some(&noise_tex));
                 //compute_encoder.set_threadgroup_memory_length(0, 16);
                 compute_encoder.dispatch_thread_groups(threadgroups_per_grid, threads_per_threadgroup);
                 compute_encoder.end_encoding();
+
+                if !all_pixels.is_empty() {
+                    // println!("{:?}", all_pixels.len());
+                    copy_to_buf(&updated_pixels, &incoming_pix_buf);
+                    copy_to_buf(&all_pixels, &all_pix_buf);
+                    let texup_encoder = command_buffer.new_compute_command_encoder();
+                    texup_encoder.set_compute_pipeline_state(&tex_update_pipeline);
+                    texup_encoder.set_buffer(0, Some(&incoming_pix_buf), 0);
+                    texup_encoder.set_buffer(1, Some(&all_pix_buf), 0);
+                    texup_encoder.set_texture(0, Some(&screen_tex));
+                    texup_encoder.dispatch_threads(threads_per_grid, threads_per_thread_group);
+                    texup_encoder.end_encoding();
+
+                    incoming_pixels.clear();
+                }
 
                 let encoder = command_buffer.new_render_command_encoder(render_pass);
                 encoder.set_render_pipeline_state(&render_pipeline_state);
@@ -1044,6 +1138,18 @@ fn main() {
                 encoder.end_encoding();
                 command_buffer.present_drawable(&drawable);
                 command_buffer.commit();
+
+                pixel_bytes = unsafe { std::slice::from_raw_parts(pixel_data_buf.contents().cast(), (threads * data_width) as usize) };
+            }
+            loop {
+                if pixel_bytes.len() != 0 {
+                    client.send_to(&pixel_bytes[(i * packet_size) as usize..(((i+1)) * packet_size) as usize], other_addr).expect("Couldn't send pixel_bytes");
+                }
+                i = (i + 1) % div;
+                if i == 0 {
+                    pixel_bytes = &[];
+                    break;
+                }
             }
             loop {
                 let event = unsafe {NSApp(mtm).nextEventMatchingMask_untilDate_inMode_dequeue(
@@ -1070,18 +1176,36 @@ fn main() {
                                 NSEventType::MouseMoved => {
                                     half_theta = (half_theta - e.deltaX() as f32 / 512.0).rem_euclid(std::f32::consts::PI);
                                     rot_updated = true;
+                                    NSApp(mtm).sendEvent(&e);
                                     // println!("{}", half_theta);
                                 },
                                 _ => {
-
+                                    NSApp(mtm).sendEvent(&e);
                                 }
                             }
-                            NSApp(mtm).sendEvent(&e);
                         };
                     },
                     None => break,
                 }
             }
+            let mut incoming_buf : [u8; 10000] = [0; 10000];
+            loop{
+                let amt = match client.recv(&mut incoming_buf) {
+                    Ok(o) => o,
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        0
+                    },
+                    Err(_) => {
+                        panic!("Error!")
+                    }
+                };
+                if amt != 0 {
+                    incoming_pixels.append(&mut incoming_buf[0..amt].to_vec());
+                } else {
+                    break;
+                }
+            }
+            // println!("{}", incoming_pixels.len());
         })
     }
 }
