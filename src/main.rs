@@ -965,16 +965,13 @@ fn main() {
     let mut keys_pressed = vec![112];
     let mut rot_updated = false;
 
-    // let (client, other_addr) = if let Ok(client) =  UdpSocket::bind("127.0.0.1:8080") {
-    //     (client, "127.0.0.1:8090")
-    // } else {
-    //     let client = UdpSocket::bind("127.0.0.1:8090").expect("Error connecting to either socket");
-    //     (client, "127.0.0.1:8080")
-    // };
-    // client.set_nonblocking(true).unwrap();
-
-    let client = UdpSocket::bind((local_ip_address::local_ip().unwrap(), 8080)).expect("Error binding client");
-    client.connect("192.168.1.255:8080").expect("Error connecting to client");
+    let (client, other_addr) = if let Ok(client) =  UdpSocket::bind("127.0.0.1:8080") {
+        (client, "127.0.0.1:8090")
+    } else {
+        let client = UdpSocket::bind("127.0.0.1:8090").expect("Error connecting to either socket");
+        (client, "127.0.0.1:8080")
+    };
+    client.set_nonblocking(true).unwrap();
 
     println!("Starting (this might take a second!)");
     //Get a texture from the MetalLayer that we can actually draw to
