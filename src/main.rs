@@ -965,14 +965,55 @@ fn main() {
     let mut keys_pressed = vec![112];
     let mut rot_updated = false;
 
-    let (client, other_addr) = if let Ok(client) =  UdpSocket::bind("127.0.0.1:8080") {
-        (client, "127.0.0.1:8090")
-    } else {
-        let client = UdpSocket::bind("127.0.0.1:8090").expect("Error connecting to either socket");
-        (client, "127.0.0.1:8080")
-    };
-    client.set_nonblocking(true).unwrap();
+    // let (client, other_addr) = if let Ok(client) =  UdpSocket::bind("127.0.0.1:8080") {
+    //     (client, "127.0.0.1:8090")
+    // } else {
+    //     let client = UdpSocket::bind("127.0.0.1:8090").expect("Error connecting to either socket");
+    //     (client, "127.0.0.1:8080")
+    // };
+    // client.set_nonblocking(true).unwrap();
 
+    // println!("{}", local_ip_address::local_ip().unwrap());
+    // let client = UdpSocket::bind("0.0.0.0:8080").unwrap_or(UdpSocket::bind((local_ip_address::local_ip().unwrap(), 8080)).unwrap());
+    // let other_addr = "192.168.1.255:8080";
+    // let other_addr = match client.connect("192.168.1.255:8080") {
+    //     Ok(_) => "192.168.1.255:8090",
+    //     Err(_) => {
+    //         client.connect("192.168.1.255:8090").expect("Error connecting to either socket");
+    //         "192.168.1.255:8080"
+    //     },
+    // };
+    let mut client = UdpSocket::bind("0.0.0.0:8080").expect("Error binding client");
+    client.set_broadcast(true).unwrap();
+    // client.set_nonblocking(true).unwrap();
+    client.set_read_timeout(Some(std::time::Duration::new(5, 0))).unwrap();
+    println!("My bound socket: {}", client.local_addr().unwrap().to_string());
+    println!("Searching for other client");
+    let mut buf : [u8; 20] = [0; 20];
+    let mut option_addr = match client.recv_from(&mut buf) {
+        Ok((amt, addr)) if amt == 1 => Some(addr.to_string()),
+        _ => None,
+    };
+
+    if option_addr.is_none() {
+        client = UdpSocket::bind("0.0.0.0:0").expect("Error binding second time");
+        client.set_broadcast(true).unwrap();
+        client.set_read_timeout(Some(std::time::Duration::new(1, 0))).unwrap();
+        option_addr = loop {
+            client.send_to(&[0], "255.255.255.255:8080").unwrap();
+            match client.recv_from(&mut buf) {
+                Ok((amt, _)) if amt != 1 => println!("{amt}"),
+                Ok((amt, addr)) if amt == 1 => break Some(addr.to_string()),
+                Ok(_) => println!("hm?"),
+                _ => println!("Timeout..?"),
+            }
+        };
+    }
+    // println!("{}", other_addr.unwrap());
+    let other_addr = &option_addr.unwrap();
+    client.send_to(&[0], other_addr).unwrap();
+    client.set_nonblocking(true).unwrap();
+    println!("Found! {other_addr}");
     println!("Starting (this might take a second!)");
     //Get a texture from the MetalLayer that we can actually draw to
     let drawable = layer.next_drawable().expect("Unable to find drawable");
@@ -1036,6 +1077,7 @@ fn main() {
             if unsafe { frame_time.compare(&NSDate::now()) } == NSComparisonResult::Ascending {
                 frame_time = get_next_frame(fps as f64);
                 frames += 1;
+                // println!("{frames}");
                 // if frames % 120 == 0 {
                 //     original_pixels.shuffle(&mut rng);
                 // }
@@ -1200,6 +1242,7 @@ fn main() {
                     }
                 };
                 if amt != 0 {
+                    // println!("{amt}");
                     incoming_pixels.append(&mut incoming_buf[0..amt].to_vec());
                 } else {
                     break;
