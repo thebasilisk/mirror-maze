@@ -280,12 +280,12 @@ kernel void compute_shader (
     float lighting_factor = 0.25;
     float3 rnd = float3(0.0);
 
-    uint seed = noise_sample.x + noise_sample.y + gid.x + gid.y;
+    uint seed = noise_sample.x + noise_sample.y + gid.x * 15823 + gid.y * 9737333;
 
     thread uint &state = seed;
 
     beam.ori = cam.camera_center;
-    beam.dir = ray_dir + (float3(random(state), random(state), 0.0) * 0.001);
+    beam.dir = ray_dir + (float3((random(state) - 0.5) * 2.0, (random(state)  - 0.5) * 2.0, 0.0) * 0.001);
     beam.t = 1e30f;
     int mirror_hits = 0;
     for (int n = 0; n < bounce_limit + mirror_hits; n++) {
@@ -297,7 +297,7 @@ kernel void compute_shader (
                 float3 emitted_light = emissions[beam.index].rgb * emissions[beam.index].a;
                 incoming_light += emitted_light * color;
                 color *= mirrors[beam.index].color;
-                float3 random_dir = normalize(float3(random(state), random(state), random(state)));
+                float3 random_dir = normalize(float3((random(state) - 0.5) * 2.0, (random(state) - 0.5) * 2.0, (random(state) - 0.5) * 2.0));
                 beam.ori = beam.ori + beam.dir * beam.t;
                 beam.dir = normalize(random_dir + (mirror_norm * beam_side));
                 //beam.dir = random_dir;
@@ -322,8 +322,8 @@ kernel void compute_shader (
     }
     //texout.write(float4(color, 1.0), pixel);
     const int max_index = 16 * 56 / 16;
-    threadgroup float3 test[max_index];
-    test[flat_index] = incoming_light;
+    threadgroup float3 test[max_index * 16];
+    test[flat_index] = float3(sqrt(max(incoming_light.x, 0.0)), sqrt(max(incoming_light.y, 0.0)), sqrt(max(incoming_light.z, 0.0)));
     threadgroup_barrier(mem_flags::mem_none);
 
     if (flat_index % 2 == 0) {

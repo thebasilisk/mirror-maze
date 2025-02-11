@@ -356,28 +356,28 @@ fn main() {
         Float3(100.0, 0.0, 0.0),
         Float3(0.0, 0.4, 0.1)
     ));
-    materials.push(false);
+    materials.push(true);
     mirrors.push(Plane::new(
         Float3(-50.0, 2.0, 50.0),
         Float3(100.0, 0.0, 0.0),
         Float3(0.0, -20.0, 0.0),
         Float3(0.0, 0.4, 0.1)
     ));
-    materials.push(false);
+    materials.push(true);
     mirrors.push(Plane::new(
         Float3(-50.0, 2.0, -50.0),
         Float3(0.0, 0.0, 100.0),
         Float3(0.0, -20.0, 0.0),
         Float3(0.0, 0.4, 0.1)
     ));
-    materials.push(false);
+    materials.push(true);
     mirrors.push(Plane::new(
         Float3(50.0, 2.0, -50.0),
         Float3(0.0, -20.0, 0.0),
         Float3(0.0, 0.0, 100.0),
         Float3(0.0, 0.4, 0.1)
     ));
-    materials.push(false);
+    materials.push(true);
     mirrors.push(Plane::new(
         Float3(-50.0, 2.0, 50.0),
         Float3(0.0, 0.0, -100.0),
@@ -385,13 +385,7 @@ fn main() {
         Float3(0.4, 0.45, 0.3)
     ));
     materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(-50.0, -10.0, 50.0),
-        Float3(0.0, 0.0, -100.0),
-        Float3(100.0, 0.0, 0.0),
-        Float3(0.4, 0.45, 0.3)
-    ));
-    materials.push(false);
+    //usually where roof goes
 
     //maze part
 
@@ -769,13 +763,23 @@ fn main() {
     }
 
     mirrors.push(Plane::new(
-        Float3(-5.0, 2.0, -41.0),
+        Float3(-5.0, 2.0, -40.1),
         Float3(10.0, 0.0, 0.0),
         Float3(0.0, -6.0, 0.0),
         Float3(0.0, 0.0, 0.0)
     ));
     materials.push(false);
-    emissions.push(Float4(1.0, 1.0, 1.0, 1.0));
+    emissions.push(Float4(1.0, 1.0, 1.0, 2.0));
+
+    //roof
+    mirrors.push(Plane::new(
+        Float3(-50.0, -10.0, 50.0),
+        Float3(0.0, 0.0, -100.0),
+        Float3(100.0, 0.0, 0.0),
+        Float3(0.4, 0.45, 0.3)
+    ));
+    materials.push(false);
+    emissions.push(Float4(1.0, 0.65, 0.2, 0.03));
 
     println!("Total: {:?}", mirrors.len());
     let (nodes, indices) = build_bvh(mirrors.len(), mirrors.clone());
