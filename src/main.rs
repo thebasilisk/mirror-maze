@@ -316,6 +316,7 @@ fn main() {
 
     let mut mirrors : Vec<Plane> = Vec::new();
     let mut materials : Vec<bool> = Vec::new();
+    let mut emissions : Vec<Float4> = Vec::new();
 
     let wall_color = Float3(0.3, 0.35, 0.4);
     // for i in 0..10 {
@@ -355,30 +356,37 @@ fn main() {
         Float3(100.0, 0.0, 0.0),
         Float3(0.0, 0.4, 0.1)
     ));
-    materials.push(true);
+    materials.push(false);
     mirrors.push(Plane::new(
         Float3(-50.0, 2.0, 50.0),
         Float3(100.0, 0.0, 0.0),
         Float3(0.0, -20.0, 0.0),
         Float3(0.0, 0.4, 0.1)
     ));
-    materials.push(true);
+    materials.push(false);
     mirrors.push(Plane::new(
         Float3(-50.0, 2.0, -50.0),
         Float3(0.0, 0.0, 100.0),
         Float3(0.0, -20.0, 0.0),
         Float3(0.0, 0.4, 0.1)
     ));
-    materials.push(true);
+    materials.push(false);
     mirrors.push(Plane::new(
         Float3(50.0, 2.0, -50.0),
         Float3(0.0, -20.0, 0.0),
         Float3(0.0, 0.0, 100.0),
         Float3(0.0, 0.4, 0.1)
     ));
-    materials.push(true);
+    materials.push(false);
     mirrors.push(Plane::new(
         Float3(-50.0, 2.0, 50.0),
+        Float3(0.0, 0.0, -100.0),
+        Float3(100.0, 0.0, 0.0),
+        Float3(0.4, 0.45, 0.3)
+    ));
+    materials.push(false);
+    mirrors.push(Plane::new(
+        Float3(-50.0, -10.0, 50.0),
         Float3(0.0, 0.0, -100.0),
         Float3(100.0, 0.0, 0.0),
         Float3(0.4, 0.45, 0.3)
@@ -756,6 +764,18 @@ fn main() {
     ));
     materials.push(false);
 
+    for _ in 0..materials.len() {
+        emissions.push(Float4(1.0, 1.0, 1.0, 0.0));
+    }
+
+    mirrors.push(Plane::new(
+        Float3(-5.0, 2.0, -41.0),
+        Float3(10.0, 0.0, 0.0),
+        Float3(0.0, -6.0, 0.0),
+        Float3(0.0, 0.0, 0.0)
+    ));
+    materials.push(false);
+    emissions.push(Float4(1.0, 1.0, 1.0, 1.0));
 
     println!("Total: {:?}", mirrors.len());
     let (nodes, indices) = build_bvh(mirrors.len(), mirrors.clone());
@@ -938,6 +958,7 @@ fn main() {
 
     let mirror_buf = make_buf(&mirrors, &device);
     let mat_buf = make_buf(&materials, &device);
+    let emi_buf = make_buf(&emissions , &device);
 
     let node_buf = make_buf(&nodes, &device);
     let index_buf = make_buf(&indices, &device);
@@ -986,7 +1007,7 @@ fn main() {
     let mut client = UdpSocket::bind("0.0.0.0:8080").expect("Error binding client");
     client.set_broadcast(true).unwrap();
     // client.set_nonblocking(true).unwrap();
-    client.set_read_timeout(Some(std::time::Duration::new(5, 0))).unwrap();
+    client.set_read_timeout(Some(std::time::Duration::new(1, 0))).unwrap();
     println!("My bound socket: {}", client.local_addr().unwrap().to_string());
     println!("Searching for other client");
     let mut buf : [u8; 20] = [0; 20];
@@ -995,22 +1016,22 @@ fn main() {
         _ => None,
     };
 
-    if option_addr.is_none() {
-        client = UdpSocket::bind("0.0.0.0:0").expect("Error binding second time");
-        client.set_broadcast(true).unwrap();
-        client.set_read_timeout(Some(std::time::Duration::new(1, 0))).unwrap();
-        option_addr = loop {
-            client.send_to(&[0], "255.255.255.255:8080").unwrap();
-            match client.recv_from(&mut buf) {
-                Ok((amt, _)) if amt != 1 => println!("{amt}"),
-                Ok((amt, addr)) if amt == 1 => break Some(addr.to_string()),
-                Ok(_) => println!("hm?"),
-                _ => println!("Timeout..?"),
-            }
-        };
-    }
+    // if option_addr.is_none() {
+    //     client = UdpSocket::bind("0.0.0.0:0").expect("Error binding second time");
+    //     client.set_broadcast(true).unwrap();
+    //     client.set_read_timeout(Some(std::time::Duration::new(1, 0))).unwrap();
+    //     option_addr = loop {
+    //         client.send_to(&[0], "255.255.255.255:8080").unwrap();
+    //         match client.recv_from(&mut buf) {
+    //             Ok((amt, _)) if amt != 1 => println!("{amt}"),
+    //             Ok((amt, addr)) if amt == 1 => break Some(addr.to_string()),
+    //             Ok(_) => println!("hm?"),
+    //             _ => println!("Timeout..?"),
+    //         }
+    //     };
+    // }
     // println!("{}", other_addr.unwrap());
-    let other_addr = &option_addr.unwrap();
+    let other_addr = &option_addr.unwrap_or(String::from("127.0.0.1:8080"));
     client.send_to(&[0], other_addr).unwrap();
     client.set_nonblocking(true).unwrap();
     println!("Found! {other_addr}");
@@ -1031,7 +1052,8 @@ fn main() {
     compute_encoder.set_buffer(3, Some(&index_buf), 0);
     compute_encoder.set_buffer(4, Some(&cam_buf), 0);
     compute_encoder.set_buffer(5, Some(&mat_buf), 0);
-    compute_encoder.set_buffer(6, Some(&pixel_data_buf), 0);
+    compute_encoder.set_buffer(6, Some(&emi_buf), 0);
+    compute_encoder.set_buffer(7, Some(&pixel_data_buf), 0);
     // compute_encoder.set_bytes(6, size_of::<u32>() as u64, mirror_count_data.as_ptr() as *const _);
     compute_encoder.set_texture(0, Some(&screen_tex));
     compute_encoder.set_texture(1, Some(&noise_tex));
@@ -1148,7 +1170,8 @@ fn main() {
                 compute_encoder.set_buffer(3, Some(&index_buf), 0);
                 compute_encoder.set_buffer(4, Some(&cam_buf), 0);
                 compute_encoder.set_buffer(5, Some(&mat_buf), 0);
-                compute_encoder.set_buffer(6, Some(&pixel_data_buf), 0);
+                compute_encoder.set_buffer(6, Some(&emi_buf), 0);
+                compute_encoder.set_buffer(7, Some(&pixel_data_buf), 0);
                 // compute_encoder.set_bytes(6, size_of::<u32>() as u64, mirror_count_data.as_ptr() as *const _);
                 compute_encoder.set_texture(0, Some(&screen_tex));
                 compute_encoder.set_texture(1, Some(&noise_tex));

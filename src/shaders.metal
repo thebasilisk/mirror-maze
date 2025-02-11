@@ -170,10 +170,17 @@ float3 quat_mult (const float3 vec, const float4 quat) {
 }
 
 
-float random (float2 st) {
-    return (fract(sin(dot(st.xy,
-                         float2(12.9898,78.233)))*
-        43758.5453123) - 0.5) * 2.0;
+//float random (float2 st) {
+//    return (fract(sin(dot(st.xy,
+//                         float2(12.9898,78.233)))*
+//        43758.5453123) - 0.5) * 2.0;
+//};
+
+float random (thread uint &state) {
+    state = state * 747796405 + 291336453;
+    uint result = ((state >> ((state >> 28) + 4)) ^ state) * 277803737;
+    result = (result >> 22) ^ result;
+    return result / 4294967295.0;
 };
 
 
@@ -234,7 +241,8 @@ kernel void compute_shader (
     const device uint *indices [[ buffer(3) ]],
     const device camera *camera [[ buffer(4) ]],
     const device bool *materials [[ buffer(5) ]],
-    device float4 *pixel_data [[ buffer(6) ]],
+    const device float4 *emissions [[ buffer(6) ]],
+    device float4 *pixel_data [[ buffer(7) ]],
     uint2 tgid [[ threadgroup_position_in_grid ]],
     uint2 gid [[ thread_position_in_threadgroup ]],
     uint2 texid [[ thread_position_in_grid ]],
@@ -264,14 +272,20 @@ kernel void compute_shader (
     ray beam;
 
     constexpr sampler s(address::repeat, filter::nearest);
-    float3 color = float3(0.0, 0.0, 0.0);
+    float3 color = float3(1.0);
+    float3 incoming_light = float3(0.0);
     float4 noise_sample = noise.sample(s, float2(gid));
     int bounce_limit = 5;
     int mirror_limit = 15;
     float lighting_factor = 0.25;
+    float3 rnd = float3(0.0);
+
+    uint seed = noise_sample.x + noise_sample.y + gid.x + gid.y;
+
+    thread uint &state = seed;
 
     beam.ori = cam.camera_center;
-    beam.dir = ray_dir + (float3(random(noise_sample.xy + float2(gid.xy)), random(noise_sample.xy + float2(gid.yx)), 0.0) * 0.001);
+    beam.dir = ray_dir + (float3(random(state), random(state), 0.0) * 0.001);
     beam.t = 1e30f;
     int mirror_hits = 0;
     for (int n = 0; n < bounce_limit + mirror_hits; n++) {
@@ -280,34 +294,36 @@ kernel void compute_shader (
             float3 mirror_norm = normalize(cross(mirrors[beam.index].v, mirrors[beam.index].u));
             float beam_side = -sign(dot(beam.dir, mirror_norm));
             if (materials[beam.index] == false || beam_side == -1.0) {
-                color += mirrors[beam.index].color * pow(lighting_factor, float(n - mirror_hits));
-                float3 random_dir = normalize(float3(random(pos_norm + float2(gid.x + n, gid.y + n)), random(noise_sample.xy + float2(gid.x + n, gid.y + n)), random(noise_sample.zx + float2(gid.x + n, gid.y + n))));
-                float flip = sign(dot(random_dir, mirror_norm * beam_side));
-                random_dir = random_dir * flip;
+                float3 emitted_light = emissions[beam.index].rgb * emissions[beam.index].a;
+                incoming_light += emitted_light * color;
+                color *= mirrors[beam.index].color;
+                float3 random_dir = normalize(float3(random(state), random(state), random(state)));
                 beam.ori = beam.ori + beam.dir * beam.t;
-                beam.dir = normalize(random_dir + mirror_norm * beam_side);
+                beam.dir = normalize(random_dir + (mirror_norm * beam_side));
+                //beam.dir = random_dir;
+                rnd = random_dir;
                 beam.t = 1e30f;
             } else {
                 mirror_hits++;
                 if (mirror_hits < mirror_limit) {
-                    color += mirrors[beam.index].color * pow(lighting_factor, float(n - mirror_hits)) * 0.01;
+                    //color *= mirrors[beam.index].color;
                     beam.ori = beam.ori + beam.dir * beam.t;
                     beam.dir = normalize(reflect(beam.dir, mirror_norm));
                     beam.t = 1e30f;
                 } else {
-                    color += float3(0.3, 0.6, 0.8);
+                    //incoming_light += float3(0.3, 0.6, 0.8) * 0.25;
                     break;
                 }
             }
         } else {
-            color += float3(0.3, 0.6, 0.8) * pow(lighting_factor, float(n - mirror_hits));
+            incoming_light += float3(0.3, 0.6, 0.8) * pow(lighting_factor, float(n - mirror_hits)) * 0.0;
             break;
         }
     }
     //texout.write(float4(color, 1.0), pixel);
     const int max_index = 16 * 56 / 16;
     threadgroup float3 test[max_index];
-    test[flat_index] = color;
+    test[flat_index] = incoming_light;
     threadgroup_barrier(mem_flags::mem_none);
 
     if (flat_index % 2 == 0) {
@@ -334,6 +350,7 @@ kernel void compute_shader (
         float float_pix = as_type<float>(packed_pix);
 
         pixel_data[(pixel_buffer_index * 16) + pixel_number] = float4(test[pixel_number * max_index], float_pix);
+        //pixel_data[(pixel_buffer_index * 16) + pixel_number] = float4(rnd, float_pix);
         texout.write(float4(test[pixel_number * max_index], 1.0), pixel);
         //pixel_data[(pixel_buffer_index * 16) + pixel_number] = pixel;
     }
