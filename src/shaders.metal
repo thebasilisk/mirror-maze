@@ -306,7 +306,7 @@ kernel void compute_shader (
             } else {
                 mirror_hits++;
                 if (mirror_hits < mirror_limit) {
-                    //color *= mirrors[beam.index].color;
+                    incoming_light += mirrors[beam.index].color * 0.005;
                     beam.ori = beam.ori + beam.dir * beam.t;
                     beam.dir = normalize(reflect(beam.dir, mirror_norm));
                     beam.t = 1e30f;

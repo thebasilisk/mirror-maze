@@ -393,14 +393,14 @@ fn main() {
         Float3(-40.0, 2.0, -20.0),
         Float3(0.0, 0.0, 10.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(-40.0, 2.0, 0.0),
         Float3(0.0, 0.0, 20.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
 
@@ -408,21 +408,21 @@ fn main() {
         Float3(-30.0, 2.0, -50.0),
         Float3(0.0, 0.0, 30.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(-30.0, 2.0, -10.0),
         Float3(0.0, 0.0, 20.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(-30.0, 2.0, 30.0),
         Float3(0.0, 0.0, 10.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
 
@@ -430,14 +430,14 @@ fn main() {
         Float3(-20.0, 2.0, -20.0),
         Float3(0.0, 0.0, 10.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(-20.0, 2.0, 10.0),
         Float3(0.0, 0.0, 20.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
 
@@ -446,14 +446,14 @@ fn main() {
         Float3(-10.0, 2.0, -10.0),
         Float3(0.0, 0.0, 30.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(-10.0, 2.0, 30.0),
         Float3(0.0, 0.0, 20.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
 
@@ -462,21 +462,21 @@ fn main() {
         Float3(0.0, 2.0, -30.0),
         Float3(0.0, 0.0, 10.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(0.0, 2.0, -10.0),
         Float3(0.0, 0.0, 40.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(0.0, 2.0, 40.0),
         Float3(0.0, 0.0, 10.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
 
@@ -484,28 +484,28 @@ fn main() {
         Float3(10.0, 2.0, -40.0),
         Float3(0.0, 0.0, 10.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(10.0, 2.0, -20.0),
         Float3(0.0, 0.0, 10.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(10.0, 2.0, 0.0),
         Float3(0.0, 0.0, 10.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(10.0, 2.0, 30.0),
         Float3(0.0, 0.0, 10.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
 
@@ -514,28 +514,28 @@ fn main() {
         Float3(20.0, 2.0, -50.0),
         Float3(0.0, 0.0, 10.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(20.0, 2.0, -10.0),
         Float3(0.0, 0.0, 10.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(20.0, 2.0, 10.0),
         Float3(0.0, 0.0, 20.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(20.0, 2.0, 40.0),
         Float3(0.0, 0.0, 10.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
 
@@ -544,14 +544,14 @@ fn main() {
         Float3(30.0, 2.0, -20.0),
         Float3(0.0, 0.0, 10.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(30.0, 2.0, 10.0),
         Float3(0.0, 0.0, 10.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
 
@@ -560,14 +560,14 @@ fn main() {
         Float3(40.0, 2.0, -20.0),
         Float3(0.0, 0.0, 30.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(40.0, 2.0, 20.0),
         Float3(0.0, 0.0, 20.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
 
@@ -576,21 +576,21 @@ fn main() {
         Float3(-50.0, 2.0, -40.0),
         Float3(10.0, 0.0, 0.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(-20.0, 2.0, -40.0),
         Float3(30.0, 0.0, 0.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(20.0, 2.0, -40.0),
         Float3(20.0, 0.0, 0.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
 
@@ -599,21 +599,21 @@ fn main() {
         Float3(-50.0, 2.0, -30.0),
         Float3(10.0, 0.0, 0.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(-20.0, 2.0, -30.0),
         Float3(20.0, 0.0, 0.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(10.0, 2.0, -30.0),
         Float3(30.0, 0.0, 0.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
 
@@ -622,14 +622,14 @@ fn main() {
         Float3(-40.0, 2.0, -20.0),
         Float3(10.0, 0.0, 0.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(-20.0, 2.0, -20.0),
         Float3(50.0, 0.0, 0.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
 
@@ -637,14 +637,14 @@ fn main() {
         Float3(-30.0, 2.0, -10.0),
         Float3(10.0, 0.0, 0.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(0.0, 2.0, -10.0),
         Float3(10.0, 0.0, 0.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
 
@@ -653,14 +653,14 @@ fn main() {
         Float3(-30.0, 2.0, 0.0),
         Float3(20.0, 0.0, 0.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(10.0, 2.0, 0.0),
         Float3(30.0, 0.0, 0.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
 
@@ -669,14 +669,14 @@ fn main() {
         Float3(10.0, 2.0, 10.0),
         Float3(10.0, 0.0, 0.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(30.0, 2.0, 10.0),
         Float3(20.0, 0.0, 0.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
 
@@ -685,21 +685,21 @@ fn main() {
         Float3(-50.0, 2.0, 20.0),
         Float3(20.0, 0.0, 0.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(0.0, 2.0, 20.0),
         Float3(10.0, 0.0, 0.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(30.0, 2.0, 20.0),
         Float3(10.0, 0.0, 0.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
 
@@ -708,14 +708,14 @@ fn main() {
         Float3(-40.0, 2.0, 30.0),
         Float3(40.0, 0.0, 0.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(10.0, 2.0, 30.0),
         Float3(20.0, 0.0, 0.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
 
@@ -724,28 +724,28 @@ fn main() {
         Float3(-50.0, 2.0, 40.0),
         Float3(10.0, 0.0, 0.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(-30.0, 2.0, 40.0),
         Float3(10.0, 0.0, 0.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(0.0, 2.0, 40.0),
         Float3(10.0, 0.0, 0.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
     mirrors.push(Plane::new(
         Float3(30.0, 2.0, 40.0),
         Float3(10.0, 0.0, 0.0),
         Float3(0.0, -10.0, 0.0),
-        float3_add(wall_color, Float3::single((random::<f32>() - 0.5) / 10.0))
+        wall_color
     ));
     materials.push(false);
 
@@ -769,17 +769,26 @@ fn main() {
         Float3(0.0, 0.0, 0.0)
     ));
     materials.push(false);
-    emissions.push(Float4(1.0, 1.0, 1.0, 2.0));
+    emissions.push(Float4(1.0, 0.8, 0.3, 2.0));
+
+    mirrors.push(Plane::new(
+        Float3(-40.0, 2.0, -19.9),
+        Float3(10.0, 0.0, 0.0),
+        Float3(0.0, -6.0, 0.0),
+        Float3(0.0, 0.0, 0.0)
+    ));
+    materials.push(false);
+    emissions.push(Float4(1.0, 0.8, 0.3, 2.0));
 
     //roof
     mirrors.push(Plane::new(
-        Float3(-50.0, -10.0, 50.0),
+        Float3(-50.0, -8.0, 50.0),
         Float3(0.0, 0.0, -100.0),
         Float3(100.0, 0.0, 0.0),
-        Float3(0.4, 0.45, 0.3)
+        Float3(0.0, 0.0, 0.0)
     ));
     materials.push(false);
-    emissions.push(Float4(1.0, 0.65, 0.2, 0.03));
+    emissions.push(Float4(1.0, 0.45, 0.15, 0.03));
 
     println!("Total: {:?}", mirrors.len());
     let (nodes, indices) = build_bvh(mirrors.len(), mirrors.clone());
