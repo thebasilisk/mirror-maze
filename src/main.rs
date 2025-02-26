@@ -15,11 +15,21 @@ use maths::{calculate_quaternion, float3_add, float3_subtract, quat_mult, scale3
 use metal::*;
 
 #[repr(C)]
+#[derive(Debug, Clone)]
 struct Camera {
     camera_center : Float3,
     focal_length : c_float,
     rotation : Float4,
     viewport : Float2
+}
+
+#[repr(C)]
+#[derive(Debug, Clone)]
+struct uniform {
+    cam : Camera,
+    view_width : f32,
+    view_height : f32,
+    chunk_width : u32
 }
 
 #[repr(C)]
@@ -243,8 +253,7 @@ fn check_collision (nodes : &Vec<BVHNode>, bbox : &aabb, node_index : usize) -> 
     None
 }
 
-fn gen_pixels (view_width : f32, view_height : f32) -> Vec<(u32, u32)> {
-    let pixel_chunk_size = 4;
+fn gen_pixels (view_width : f32, view_height : f32, pixel_chunk_size : u32) -> Vec<(u32, u32)> {
     let width = view_width as u32 / pixel_chunk_size;
     let height = view_height as u32 / pixel_chunk_size;
     let mut out_pixels : Vec<(u32, u32)> = Vec::with_capacity((width*height) as usize);
@@ -262,6 +271,7 @@ fn gen_pixels (view_width : f32, view_height : f32) -> Vec<(u32, u32)> {
 
 fn random_pixels (width : u64, height : u64, pixels : &mut Vec<(u32, u32)>, original : &Vec<(u32, u32)>) -> Vec<(u32, u32)> {
     let mut pixel_update_data : Vec<(u32,u32)> = Vec::with_capacity((height * width) as usize);
+    // println!("{}", pixels.len());
     for _ in 0..height*width {
         if let Some(pixel) = pixels.pop() {
             pixel_update_data.push(pixel);
@@ -310,15 +320,242 @@ fn intersect_aabb(beam : &ray , bmin : Float3, bmax : Float3) -> bool {
     return tmax >= tmin && tmin < 1e30f32 && tmax > 0.0;
 }
 
+struct TreeBuilder {
+    nodes : Vec<Option<usize>>
+}
+
+impl TreeBuilder {
+    fn new() -> Self {
+        TreeBuilder {nodes: Vec::new()}
+    }
+    fn new_node(&mut self) {
+        self.nodes.push(None);
+    }
+    fn get_root(&self, index : usize) -> usize {
+        match self.nodes[index] {
+            Some(parent) => self.get_root(parent),
+            None => index,
+        }
+    }
+    fn connected (&self, left : usize, right : usize) -> bool {
+        self.get_root(left) == self.get_root(right)
+    }
+    fn connect (&mut self, parent : usize, child : usize) {
+        let root =  self.get_root(child);
+        self.nodes[root] = Some(parent);
+    }
+}
+
+// #[derive(Debug, PartialEq, Eq, Clone)]
+// struct Tree <'a> {
+//     index : u8,
+//     parent : Option<Box<&'a Tree<'a>>>
+// }
+
+// impl <'a> Tree<'a> {
+//     fn new(index : u8) -> Self {
+//         Tree {
+//             index,
+//             parent : None
+//         }
+//     }
+//     fn root(&self) -> Box<Tree> {
+//         match self.parent.clone() {
+//             Some(parent) => parent.root(),
+//             None => Box::new(self.clone()),
+//         }
+//     }
+//     fn set_parent(&mut self, new_parent : Option<Box<&'a Tree>>) {
+//         self.parent = new_parent;
+//     }
+//     fn connected(&self, other : &Tree) -> bool {
+//         self.root() == other.root()
+//     }
+//     fn connect(&self, other : &mut Tree) {
+//         // println!("{:?}", other.root());
+//         other.root().set_parent(Some(Box::new(self)));
+//     }
+// }
+
 const IMAGE : &[u8] = include_bytes!("/Users/basil/rust-projects/mirror-maze/textures/noiseTexture-2.png");
 
+
 fn main() {
+
+    // let mut root = Tree::new(0);
+    // let mut node = Tree::new(1);
+    // node.parent = Some(Box::new(&root));
+    // node.set_parent(Some(Box::new(&root)));
+    // root.connect(&mut node);
+    //nodes.push(node);
+    // println!("Node: {:?}", node);
+    // println!("Initial root2: {:?}", root.root());
+    // let mut new_root = Tree::new();
+    // new_root.connect(&mut root);
+
+    // println!("New root: {:?}", nodes[0].root());
+
+
+    // let mut builder = TreeBuilder::new();
+    // builder.new_node();
+    // for i in 1..10 {
+    //     builder.new_node();
+    //     builder.connect(0, i);
+    // }
+    // builder.new_node();
+    // for i in 11..20 {
+    //     builder.new_node();
+    //     builder.connect(10, i);
+    // }
+
+    // builder.connect(1, 0);
+    // println!("Node root: {}", builder.get_root(8));
+    // println!("Nodes: {}", builder.nodes.len());
+
+    let mut builder = TreeBuilder::new();
+    let mut edges = Vec::new();
+    let mut sets : Vec<Vec<usize>> = Vec::new();
+    let mut grid : Vec<Vec<u8>> = Vec::new();
+
+    let height = 10;
+    let width = 10;
+    for y in 0..height {
+        sets.push(Vec::new());
+        grid.push(Vec::new());
+        for x in 0..width {
+            if y != 0 {edges.push((x, y, true))};
+            if x != 0 {edges.push((x, y, false))};
+            // sets[y].push(builder.nodes.len());
+            sets[y].push(builder.nodes.len());
+            grid[y].push(0);
+            builder.new_node();
+        }
+    }
+
+    edges.shuffle(&mut thread_rng());
+
+
+    for (x, y, up) in edges {
+        let (nx, ny) = if up {
+            (x, y - 1)
+        } else {
+            (x - 1, y)
+        };
+        if !builder.connected(sets[y][x], sets[ny][nx]) {
+            builder.connect(sets[y][x], sets[ny][nx]);
+            if up {
+                grid[y][x] |= 1;
+                grid[ny][nx] |= 2;
+            } else {
+                grid[y][x] |= 4;
+                grid[ny][nx] |= 8;
+            }
+        }
+    }
+    let mut vert_walls = Vec::new();
+    for x in 0..width {
+        let mut wall_start = 0;
+        let mut wall_height = 0;
+        for y in 0..height {
+            if x == 0 {
+                wall_height += 1;
+                continue;
+            } else if grid[y][x] & 4 == 0 && grid[y][x-1] & 8 == 0 {
+                wall_height += 1;
+            } else {
+                if wall_height > 0 {
+                    vert_walls.push((x as f32, wall_start as f32, wall_height as f32));
+                }
+                wall_height = 0;
+                wall_start = y + 1;
+            }
+            // println!("{:?}", grid[y]);
+        }
+        vert_walls.push((x as f32, wall_start as f32, wall_height as f32));
+    }
+
+    let mut hori_walls = Vec::new();
+    for y in 0..height {
+        let mut wall_start = 0;
+        let mut wall_length = 0;
+        for x in 0..width {
+            if y == 0 {
+                wall_length += 1;
+                continue;
+            } else if grid[y][x] & 1 == 0 && grid[y-1][x] & 2 == 0 {
+                wall_length += 1;
+            } else {
+                if wall_length > 0 {
+                    hori_walls.push((y as f32, wall_start as f32, wall_length as f32));
+                }
+                wall_length = 0;
+                wall_start = x + 1;
+            }
+        }
+        hori_walls.push((y as f32, wall_start as f32, wall_length as f32));
+    }
+
+    // println!("{vert_walls:?}");
+    // println!("{hori_walls:?}");
 
     let mut mirrors : Vec<Plane> = Vec::new();
     let mut materials : Vec<bool> = Vec::new();
     let mut emissions : Vec<Float4> = Vec::new();
 
     let wall_color = Float3(0.3, 0.35, 0.4);
+
+    for wall in vert_walls {
+        mirrors.push(Plane::new(
+            Float3(-10.0 * (height as f32 / 2.0) + (wall.0 * 10.0), 2.0, -10.0 * (height as f32 / 2.0) + (wall.1 * 10.0)),
+            Float3(0.0, 0.0, wall.2 * 10.0),
+            Float3(0.0, -10.0, 0.0),
+            wall_color
+        ));
+        if random::<f32>() < 0.85 {
+            materials.push(false);
+        } else {
+            materials.push(true);
+        }
+        emissions.push(Float4(1.0, 0.0, 0.0, 0.0));
+
+        if wall.2 <= 2.0 && random::<f32>() < 0.3 {
+            mirrors.push(Plane::new(
+                Float3(-10.0 * (height as f32 / 2.0) + (wall.0 * 10.0) + 0.1, 2.0, -10.0 * (height as f32 / 2.0) + (wall.1 * 10.0)),
+                Float3(0.0, 0.0, 9.9),
+                Float3(0.0, -6.0, 0.0),
+                wall_color
+            ));
+            materials.push(false);
+            emissions.push(Float4(1.0, 0.8, 0.3, 2.0));
+        }
+    }
+
+    for wall in hori_walls {
+        mirrors.push(Plane::new(
+            Float3(-10.0 * (height as f32 / 2.0) + (wall.1 * 10.0), 2.0, -10.0 * (height as f32 / 2.0) + (wall.0 * 10.0)),
+            Float3(wall.2 * 10.0, 0.0, 0.0),
+            Float3(0.0, -10.0, 0.0),
+            wall_color
+        ));
+        if random::<f32>() < 0.90 {
+            materials.push(false);
+        } else {
+            materials.push(true);
+        }
+        emissions.push(Float4(1.0, 0.0, 0.0, 0.0));
+
+        if wall.2 <= 2.0 && random::<f32>() < 0.3 {
+            mirrors.push(Plane::new(
+                Float3(-10.0 * (height as f32 / 2.0) + (wall.1 * 10.0), 2.0, -10.0 * (height as f32 / 2.0) + (wall.0 * 10.0) + 0.1),
+                Float3(9.9, 0.0, 0.0),
+                Float3(0.0, -6.0, 0.0),
+                wall_color
+            ));
+            materials.push(false);
+            emissions.push(Float4(1.0, 0.8, 0.3, 2.0));
+        }
+    }
+
     // for i in 0..10 {
     //     if i % 2 == 0 {
     //         //continue;
@@ -354,30 +591,34 @@ fn main() {
         Float3(-50.0, 2.0, -50.0),
         Float3(0.0, -20.0, 0.0),
         Float3(100.0, 0.0, 0.0),
-        Float3(0.0, 0.4, 0.1)
+        wall_color
     ));
-    materials.push(true);
+    materials.push(false);
+    emissions.push(Float4(1.0, 1.0, 1.0, 0.0));
     mirrors.push(Plane::new(
         Float3(-50.0, 2.0, 50.0),
         Float3(100.0, 0.0, 0.0),
         Float3(0.0, -20.0, 0.0),
-        Float3(0.0, 0.4, 0.1)
+        wall_color
     ));
-    materials.push(true);
+    materials.push(false);
+    emissions.push(Float4(1.0, 1.0, 1.0, 0.0));
     mirrors.push(Plane::new(
         Float3(-50.0, 2.0, -50.0),
         Float3(0.0, 0.0, 100.0),
         Float3(0.0, -20.0, 0.0),
-        Float3(0.0, 0.4, 0.1)
+        wall_color
     ));
-    materials.push(true);
+    materials.push(false);
+    emissions.push(Float4(1.0, 1.0, 1.0, 0.0));
     mirrors.push(Plane::new(
         Float3(50.0, 2.0, -50.0),
         Float3(0.0, -20.0, 0.0),
         Float3(0.0, 0.0, 100.0),
-        Float3(0.0, 0.4, 0.1)
+        wall_color
     ));
-    materials.push(true);
+    materials.push(false);
+    emissions.push(Float4(1.0, 1.0, 1.0, 0.0));
     mirrors.push(Plane::new(
         Float3(-50.0, 2.0, 50.0),
         Float3(0.0, 0.0, -100.0),
@@ -385,400 +626,402 @@ fn main() {
         Float3(0.4, 0.45, 0.3)
     ));
     materials.push(false);
+    emissions.push(Float4(1.0, 1.0, 1.0, 0.0));
     //usually where roof goes
 
     //maze part
 
-    mirrors.push(Plane::new(
-        Float3(-40.0, 2.0, -20.0),
-        Float3(0.0, 0.0, 10.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(-40.0, 2.0, 0.0),
-        Float3(0.0, 0.0, 20.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
+    // {
+    //     mirrors.push(Plane::new(
+    //         Float3(-40.0, 2.0, -20.0),
+    //         Float3(0.0, 0.0, 10.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(-40.0, 2.0, 0.0),
+    //         Float3(0.0, 0.0, 20.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
 
-    mirrors.push(Plane::new(
-        Float3(-30.0, 2.0, -50.0),
-        Float3(0.0, 0.0, 30.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(-30.0, 2.0, -10.0),
-        Float3(0.0, 0.0, 20.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(-30.0, 2.0, 30.0),
-        Float3(0.0, 0.0, 10.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(-30.0, 2.0, -50.0),
+    //         Float3(0.0, 0.0, 30.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(-30.0, 2.0, -10.0),
+    //         Float3(0.0, 0.0, 20.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(-30.0, 2.0, 30.0),
+    //         Float3(0.0, 0.0, 10.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
 
-    mirrors.push(Plane::new(
-        Float3(-20.0, 2.0, -20.0),
-        Float3(0.0, 0.0, 10.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(-20.0, 2.0, 10.0),
-        Float3(0.0, 0.0, 20.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-
-
-    mirrors.push(Plane::new(
-        Float3(-10.0, 2.0, -10.0),
-        Float3(0.0, 0.0, 30.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(-10.0, 2.0, 30.0),
-        Float3(0.0, 0.0, 20.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(-20.0, 2.0, -20.0),
+    //         Float3(0.0, 0.0, 10.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(-20.0, 2.0, 10.0),
+    //         Float3(0.0, 0.0, 20.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
 
 
-    mirrors.push(Plane::new(
-        Float3(0.0, 2.0, -30.0),
-        Float3(0.0, 0.0, 10.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(0.0, 2.0, -10.0),
-        Float3(0.0, 0.0, 40.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(0.0, 2.0, 40.0),
-        Float3(0.0, 0.0, 10.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-
-    mirrors.push(Plane::new(
-        Float3(10.0, 2.0, -40.0),
-        Float3(0.0, 0.0, 10.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(10.0, 2.0, -20.0),
-        Float3(0.0, 0.0, 10.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(10.0, 2.0, 0.0),
-        Float3(0.0, 0.0, 10.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(10.0, 2.0, 30.0),
-        Float3(0.0, 0.0, 10.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(-10.0, 2.0, -10.0),
+    //         Float3(0.0, 0.0, 30.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(-10.0, 2.0, 30.0),
+    //         Float3(0.0, 0.0, 20.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
 
 
-    mirrors.push(Plane::new(
-        Float3(20.0, 2.0, -50.0),
-        Float3(0.0, 0.0, 10.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(20.0, 2.0, -10.0),
-        Float3(0.0, 0.0, 10.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(20.0, 2.0, 10.0),
-        Float3(0.0, 0.0, 20.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(20.0, 2.0, 40.0),
-        Float3(0.0, 0.0, 10.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(0.0, 2.0, -30.0),
+    //         Float3(0.0, 0.0, 10.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(0.0, 2.0, -10.0),
+    //         Float3(0.0, 0.0, 40.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(0.0, 2.0, 40.0),
+    //         Float3(0.0, 0.0, 10.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+
+    //     mirrors.push(Plane::new(
+    //         Float3(10.0, 2.0, -40.0),
+    //         Float3(0.0, 0.0, 10.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(10.0, 2.0, -20.0),
+    //         Float3(0.0, 0.0, 10.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(10.0, 2.0, 0.0),
+    //         Float3(0.0, 0.0, 10.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(10.0, 2.0, 30.0),
+    //         Float3(0.0, 0.0, 10.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
 
 
-    mirrors.push(Plane::new(
-        Float3(30.0, 2.0, -20.0),
-        Float3(0.0, 0.0, 10.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(30.0, 2.0, 10.0),
-        Float3(0.0, 0.0, 10.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(20.0, 2.0, -50.0),
+    //         Float3(0.0, 0.0, 10.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(20.0, 2.0, -10.0),
+    //         Float3(0.0, 0.0, 10.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(20.0, 2.0, 10.0),
+    //         Float3(0.0, 0.0, 20.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(20.0, 2.0, 40.0),
+    //         Float3(0.0, 0.0, 10.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
 
 
-    mirrors.push(Plane::new(
-        Float3(40.0, 2.0, -20.0),
-        Float3(0.0, 0.0, 30.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(40.0, 2.0, 20.0),
-        Float3(0.0, 0.0, 20.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(30.0, 2.0, -20.0),
+    //         Float3(0.0, 0.0, 10.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(30.0, 2.0, 10.0),
+    //         Float3(0.0, 0.0, 10.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
 
 
-    mirrors.push(Plane::new(
-        Float3(-50.0, 2.0, -40.0),
-        Float3(10.0, 0.0, 0.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(-20.0, 2.0, -40.0),
-        Float3(30.0, 0.0, 0.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(20.0, 2.0, -40.0),
-        Float3(20.0, 0.0, 0.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(40.0, 2.0, -20.0),
+    //         Float3(0.0, 0.0, 30.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(40.0, 2.0, 20.0),
+    //         Float3(0.0, 0.0, 20.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
 
 
-    mirrors.push(Plane::new(
-        Float3(-50.0, 2.0, -30.0),
-        Float3(10.0, 0.0, 0.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(-20.0, 2.0, -30.0),
-        Float3(20.0, 0.0, 0.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(10.0, 2.0, -30.0),
-        Float3(30.0, 0.0, 0.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(-50.0, 2.0, -40.0),
+    //         Float3(10.0, 0.0, 0.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(-20.0, 2.0, -40.0),
+    //         Float3(30.0, 0.0, 0.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(20.0, 2.0, -40.0),
+    //         Float3(20.0, 0.0, 0.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
 
 
-    mirrors.push(Plane::new(
-        Float3(-40.0, 2.0, -20.0),
-        Float3(10.0, 0.0, 0.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(-20.0, 2.0, -20.0),
-        Float3(50.0, 0.0, 0.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-
-    mirrors.push(Plane::new(
-        Float3(-30.0, 2.0, -10.0),
-        Float3(10.0, 0.0, 0.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(0.0, 2.0, -10.0),
-        Float3(10.0, 0.0, 0.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(-50.0, 2.0, -30.0),
+    //         Float3(10.0, 0.0, 0.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(-20.0, 2.0, -30.0),
+    //         Float3(20.0, 0.0, 0.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(10.0, 2.0, -30.0),
+    //         Float3(30.0, 0.0, 0.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
 
 
-    mirrors.push(Plane::new(
-        Float3(-30.0, 2.0, 0.0),
-        Float3(20.0, 0.0, 0.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(10.0, 2.0, 0.0),
-        Float3(30.0, 0.0, 0.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(-40.0, 2.0, -20.0),
+    //         Float3(10.0, 0.0, 0.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(-20.0, 2.0, -20.0),
+    //         Float3(50.0, 0.0, 0.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+
+    //     mirrors.push(Plane::new(
+    //         Float3(-30.0, 2.0, -10.0),
+    //         Float3(10.0, 0.0, 0.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(0.0, 2.0, -10.0),
+    //         Float3(10.0, 0.0, 0.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
 
 
-    mirrors.push(Plane::new(
-        Float3(10.0, 2.0, 10.0),
-        Float3(10.0, 0.0, 0.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(30.0, 2.0, 10.0),
-        Float3(20.0, 0.0, 0.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(-30.0, 2.0, 0.0),
+    //         Float3(20.0, 0.0, 0.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(10.0, 2.0, 0.0),
+    //         Float3(30.0, 0.0, 0.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
 
 
-    mirrors.push(Plane::new(
-        Float3(-50.0, 2.0, 20.0),
-        Float3(20.0, 0.0, 0.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(0.0, 2.0, 20.0),
-        Float3(10.0, 0.0, 0.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(30.0, 2.0, 20.0),
-        Float3(10.0, 0.0, 0.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(10.0, 2.0, 10.0),
+    //         Float3(10.0, 0.0, 0.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(30.0, 2.0, 10.0),
+    //         Float3(20.0, 0.0, 0.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
 
 
-    mirrors.push(Plane::new(
-        Float3(-40.0, 2.0, 30.0),
-        Float3(40.0, 0.0, 0.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(10.0, 2.0, 30.0),
-        Float3(20.0, 0.0, 0.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(-50.0, 2.0, 20.0),
+    //         Float3(20.0, 0.0, 0.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(0.0, 2.0, 20.0),
+    //         Float3(10.0, 0.0, 0.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(30.0, 2.0, 20.0),
+    //         Float3(10.0, 0.0, 0.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
 
 
-    mirrors.push(Plane::new(
-        Float3(-50.0, 2.0, 40.0),
-        Float3(10.0, 0.0, 0.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(-30.0, 2.0, 40.0),
-        Float3(10.0, 0.0, 0.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(0.0, 2.0, 40.0),
-        Float3(10.0, 0.0, 0.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
-    mirrors.push(Plane::new(
-        Float3(30.0, 2.0, 40.0),
-        Float3(10.0, 0.0, 0.0),
-        Float3(0.0, -10.0, 0.0),
-        wall_color
-    ));
-    materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(-40.0, 2.0, 30.0),
+    //         Float3(40.0, 0.0, 0.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(10.0, 2.0, 30.0),
+    //         Float3(20.0, 0.0, 0.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
 
 
-    mirrors.push(Plane::new(
-        Float3(-10.0, 2.0, 50.0),
-        Float3(10.0, 0.0, 0.0),
-        Float3(0.0, -10.0, 0.0),
-        Float3(0.5, 0.2, 0.1)
-    ));
-    materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(-50.0, 2.0, 40.0),
+    //         Float3(10.0, 0.0, 0.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(-30.0, 2.0, 40.0),
+    //         Float3(10.0, 0.0, 0.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(0.0, 2.0, 40.0),
+    //         Float3(10.0, 0.0, 0.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
+    //     mirrors.push(Plane::new(
+    //         Float3(30.0, 2.0, 40.0),
+    //         Float3(10.0, 0.0, 0.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         wall_color
+    //     ));
+    //     materials.push(false);
 
-    for _ in 0..materials.len() {
-        emissions.push(Float4(1.0, 1.0, 1.0, 0.0));
-    }
+
+    //     mirrors.push(Plane::new(
+    //         Float3(-10.0, 2.0, 50.0),
+    //         Float3(10.0, 0.0, 0.0),
+    //         Float3(0.0, -10.0, 0.0),
+    //         Float3(0.5, 0.2, 0.1)
+    //     ));
+    //     materials.push(false);
+    // }
+    // for _ in 0..materials.len() {
+    //     emissions.push(Float4(1.0, 1.0, 1.0, 0.0));
+    // }
 
     mirrors.push(Plane::new(
-        Float3(-5.0, 2.0, -40.1),
-        Float3(10.0, 0.0, 0.0),
-        Float3(0.0, -6.0, 0.0),
-        Float3(0.0, 0.0, 0.0)
-    ));
-    materials.push(false);
-    emissions.push(Float4(1.0, 0.8, 0.3, 2.0));
-
-    mirrors.push(Plane::new(
-        Float3(-40.0, 2.0, -19.9),
+        Float3(-5.0, 2.0, -49.9),
         Float3(10.0, 0.0, 0.0),
         Float3(0.0, -6.0, 0.0),
         Float3(0.0, 0.0, 0.0)
     ));
     materials.push(false);
     emissions.push(Float4(1.0, 0.8, 0.3, 2.0));
+
+    // mirrors.push(Plane::new(
+    //     Float3(-40.0, 2.0, -19.9),
+    //     Float3(10.0, 0.0, 0.0),
+    //     Float3(0.0, -6.0, 0.0),
+    //     Float3(0.0, 0.0, 0.0)
+    // ));
+    // materials.push(false);
+    // emissions.push(Float4(1.0, 0.8, 0.3, 2.0));
 
     //roof
     mirrors.push(Plane::new(
@@ -788,7 +1031,8 @@ fn main() {
         Float3(0.0, 0.0, 0.0)
     ));
     materials.push(false);
-    emissions.push(Float4(1.0, 0.45, 0.15, 0.03));
+    emissions.push(Float4(1.0, 0.8, 0.3, 0.02));
+    // emissions.push(Float4(1.0, 0.45, 0.15, 0.6));
 
     println!("Total: {:?}", mirrors.len());
     let (nodes, indices) = build_bvh(mirrors.len(), mirrors.clone());
@@ -824,8 +1068,11 @@ fn main() {
         NSWindowStyleMask::Titled.union(
         NSWindowStyleMask::Closable);
 
-    let view_width : f32 = 1024.0 / 2.0;
-    let view_height : f32 = 768.0 / 2.0;
+    let view_width : f32 = 1024.0;
+    let view_height : f32 = 768.0;
+
+    let chunk_width = 4u32;
+    let pixels_per_chunk = chunk_width * chunk_width;
 
     //Initializes an NSWindow object with a size, backing color, title, and style_mask
     let window = initialize_window(
@@ -870,13 +1117,13 @@ fn main() {
     let threads_per_threadgroup = MTLSize::new(threadgroup_width, threadgroup_height, 1);
 
 
-    let threadgroups_per_grid = MTLSize::new((view_width / 2.0 / 16.0) as u64, (view_height / 2.0 / 16.0) as u64, 1);
+    let threadgroups_per_grid = MTLSize::new((view_width / 2.0 / pixels_per_chunk as f32) as u64, (view_height / 2.0 / pixels_per_chunk as f32) as u64, 1);
     println!("{}", compute_pipeline_state.max_total_threads_per_threadgroup());
     println!("{threadgroup_width}, {threadgroup_height}");
     println!("{}", threadgroups_per_grid.height * threadgroups_per_grid.width);
 
     let tex_update_pipeline = device.new_compute_pipeline_state_with_function(&tex_updatefunction).unwrap();
-    let threads = threadgroups_per_grid.width * threadgroups_per_grid.height * 16;
+    let threads = threadgroups_per_grid.width * threadgroups_per_grid.height * pixels_per_chunk as u64;
     let threads_per_grid = MTLSize::new(threads, 1, 1);
     let threads_per_thread_group = MTLSize::new(threads.min(tex_update_pipeline.max_total_threads_per_threadgroup()), 1, 1);
 
@@ -928,7 +1175,8 @@ fn main() {
     let screen_tex = device.new_texture(&screen_tex_descriptor);
 
     println!("Generating pixel addresses..");
-    let original_pixels = gen_pixels(view_width, view_height);
+
+    let original_pixels = gen_pixels(view_width, view_height, chunk_width);
     let mut pixels = original_pixels.clone();
     let initial_pixel_data = random_pixels(threadgroups_per_grid.width, threadgroups_per_grid.height, &mut pixels, &original_pixels);
     println!("Done!");
@@ -937,8 +1185,8 @@ fn main() {
     let mut dummy_pix = Vec::new();
     for n in 0..initial_pixel_data.len() {
         let pix = initial_pixel_data[n];
-        for i in 0..4 {
-            for j in 0..4 {
+        for i in 0..chunk_width {
+            for j in 0..chunk_width {
                 all_pixels.push(Float3(0.0, 0.0, 0.0));
                 all_pixels.push(Float3(0.0, 0.0, 0.0));
                 all_pixels.push(Float3(0.0, 0.0, 0.0));
@@ -979,7 +1227,7 @@ fn main() {
     let viewport_height = 2.0;
     let viewport_width = viewport_height * (view_width as f32 / view_height as f32);
 
-    let mut camera_center = Float3(0.0, 0.0, -45.0);
+    let mut camera_center = Float3(-5.0, 0.0, -45.0);
     let focal_length = 1.0;
 
     let player_diag = Float3(0.5, 0.2, 0.5);
@@ -988,11 +1236,12 @@ fn main() {
     let mut half_theta = quat.3.acos();
 
     let init_cam : Camera = Camera { camera_center, focal_length, rotation : quat, viewport: Float2(viewport_width, viewport_height) };
-    let cam_buf = make_buf(&vec![init_cam], &device);
+    let mut uni = uniform{view_width, view_height, cam: init_cam, chunk_width};
+    // let cam_buf = make_buf(&vec![init_cam], &device);
 
     let mirror_count_data = vec![mirrors.len() as u32];
 
-    let fps = 60.0f32;
+    let fps = 30.0f32;
     let mut frames = 0;
     let mut frame_time = get_next_frame(fps as f64);
 
@@ -1063,7 +1312,7 @@ fn main() {
     compute_encoder.set_buffer(1, Some(&mirror_buf), 0);
     compute_encoder.set_buffer(2, Some(&node_buf), 0);
     compute_encoder.set_buffer(3, Some(&index_buf), 0);
-    compute_encoder.set_buffer(4, Some(&cam_buf), 0);
+    compute_encoder.set_bytes(4, size_of::<uniform>() as u64, vec![uni.clone()].as_ptr() as *const _);
     compute_encoder.set_buffer(5, Some(&mat_buf), 0);
     compute_encoder.set_buffer(6, Some(&emi_buf), 0);
     compute_encoder.set_buffer(7, Some(&pixel_data_buf), 0);
@@ -1156,7 +1405,7 @@ fn main() {
                         println!("Help!");
                     } else {
                         quat = new_quat;
-                        pixels.splice(0..0, original_pixels.clone());
+                        // pixels.splice(0..0, original_pixels.clone());
                     }
                     rot_updated = false;
                 }
@@ -1164,7 +1413,7 @@ fn main() {
                     println!("Help!");
                 } else {
                     let cam : Camera = Camera { camera_center, focal_length, rotation : quat, viewport: Float2(viewport_width, viewport_height) };
-                    copy_to_buf(&vec![cam], &cam_buf);
+                    uni = uniform{view_width, view_height, cam, chunk_width};
                 }
                 //Get a texture from the MetalLayer that we can actually draw to
                 let drawable = layer.next_drawable().expect("Unable to find drawable");
@@ -1181,10 +1430,10 @@ fn main() {
                 compute_encoder.set_buffer(1, Some(&mirror_buf), 0);
                 compute_encoder.set_buffer(2, Some(&node_buf), 0);
                 compute_encoder.set_buffer(3, Some(&index_buf), 0);
-                compute_encoder.set_buffer(4, Some(&cam_buf), 0);
+                compute_encoder.set_bytes(4, size_of::<uniform>() as u64, vec![uni.clone()].as_ptr() as *const _);
                 compute_encoder.set_buffer(5, Some(&mat_buf), 0);
                 compute_encoder.set_buffer(6, Some(&emi_buf), 0);
-                compute_encoder.set_buffer(7, Some(&pixel_data_buf), 0);
+                compute_encoder.set_buffer(8, Some(&pixel_data_buf), 0);
                 // compute_encoder.set_bytes(6, size_of::<u32>() as u64, mirror_count_data.as_ptr() as *const _);
                 compute_encoder.set_texture(0, Some(&screen_tex));
                 compute_encoder.set_texture(1, Some(&noise_tex));
@@ -1221,7 +1470,7 @@ fn main() {
             }
             loop {
                 if pixel_bytes.len() != 0 {
-                    client.send_to(&pixel_bytes[(i * packet_size) as usize..(((i+1)) * packet_size) as usize], other_addr).expect("Couldn't send pixel_bytes");
+                    // client.send_to(&pixel_bytes[(i * packet_size) as usize..(((i+1)) * packet_size) as usize], other_addr).expect("Couldn't send pixel_bytes");
                 }
                 i = (i + 1) % div;
                 if i == 0 {

@@ -2,6 +2,8 @@
 
 using namespace metal;
 
+//xcrun -sdk macosx metal -o shaders.ir -c shaders.metal && xcrun -sdk macosx metallib -o shaders.metallib shaders.ir
+
 struct ColorInOut {
     float4 position [[position]];
     float4 color;
@@ -58,7 +60,7 @@ void ray_rect_intersect (thread ray& beam, const rect mirror, const int index) {
     float d1 = dot(rect_vect, mirror.v) / length(mirror.v);
     float d2 = dot(rect_vect, mirror.u) / length(mirror.u);
 
-    if ((0 <= d1 && d1 <= length(mirror.v)) && (0 <= d2 && d2 <= length(mirror.u)) && norm_check != 0.0 && a > 0.001 && a < beam.t) {
+    if ((0 <= d1 && d1 <= length(mirror.v)) && (0 <= d2 && d2 <= length(mirror.u)) && norm_check != 0.0 && a > 0.1 && a < beam.t) {
         beam.t = a;
         beam.index = index;
     }
@@ -232,6 +234,13 @@ kernel void texture_update (
     image.write(float4(pixel_data[gid], 1.0), updated_pixels[gid]);
 }
 
+struct uni {
+    camera cam;
+    float view_width;
+    float view_height;
+    uint chunk_width;
+};
+
 kernel void compute_shader (
     texture2d<float, access::write> texout [[ texture(0) ]],
     texture2d<float, access::sample> noise [[ texture(1) ]],
@@ -239,7 +248,7 @@ kernel void compute_shader (
     const device rect *mirrors [[ buffer(1) ]],
     const device bvh_node *nodes [[ buffer(2) ]],
     const device uint *indices [[ buffer(3) ]],
-    const device camera *camera [[ buffer(4) ]],
+    const device uni *uniforms [[ buffer(4) ]],
     const device bool *materials [[ buffer(5) ]],
     const device float4 *emissions [[ buffer(6) ]],
     device float4 *pixel_data [[ buffer(7) ]],
@@ -249,22 +258,27 @@ kernel void compute_shader (
     uint2 dimensions [[ threads_per_threadgroup ]]
 ) {
     //tgid.y * grid width
-    uint pixel_buffer_index = tgid.x + tgid.y * ((512 / 2) / 16);
+    float width = uniforms[0].view_width;
+    float height = uniforms[0].view_height;
+    uint chunk = uniforms[0].chunk_width;
+    uint ppc = chunk * chunk;
+
+    uint pixel_buffer_index = tgid.x + tgid.y * ((width / 2) / ppc);
     uint2 pixel = pixel_update_buffer[pixel_buffer_index];
 
     uint total_threads = dimensions.x * dimensions.y;
 
     uint flat_index = gid.x + dimensions.x * gid.y;
-    uint pixel_number = flat_index / (total_threads / 16);
-    uint pixel_y_add = pixel_number % 4;
-    uint pixel_x_add = pixel_number / 4;
+    uint pixel_number = flat_index / (total_threads / ppc);
+    uint pixel_y_add = pixel_number % chunk;
+    uint pixel_x_add = pixel_number / chunk;
     pixel = pixel + uint2(pixel_x_add, pixel_y_add);
 
-    auto device const &cam = camera[0];
+    auto device const &cam = uniforms[0].cam;
 
     //threadgroup float3 pixel_colors[32*32];
 
-    float2 pos_norm = float2(pixel.x / (1024.0 / 2.0), pixel.y / (768.0 / 2.0));
+    float2 pos_norm = float2(pixel.x / (width), pixel.y / (height));
     float3 viewport_corner = cam.camera_center - float3(cam.viewport.x / 2.0, cam.viewport.y / 2.0, -cam.focal_length);
     float3 ray_dir = normalize((viewport_corner + float3(pos_norm.x * cam.viewport.x, pos_norm.y * cam.viewport.y, 0.0)) - cam.camera_center);
     ray_dir = quat_mult(ray_dir, cam.rotation);
@@ -275,12 +289,13 @@ kernel void compute_shader (
     float3 color = float3(1.0);
     float3 incoming_light = float3(0.0);
     float4 noise_sample = noise.sample(s, float2(gid));
+
+    //TODO: uniform this
     int bounce_limit = 5;
     int mirror_limit = 15;
     float lighting_factor = 0.25;
-    float3 rnd = float3(0.0);
 
-    uint seed = noise_sample.x + noise_sample.y + gid.x * 15823 + gid.y * 9737333;
+    uint seed = noise_sample.x + noise_sample.y + texid.x * 15823 + texid.y * 9737333;
 
     thread uint &state = seed;
 
@@ -297,11 +312,14 @@ kernel void compute_shader (
                 float3 emitted_light = emissions[beam.index].rgb * emissions[beam.index].a;
                 incoming_light += emitted_light * color;
                 color *= mirrors[beam.index].color;
-                float3 random_dir = normalize(float3((random(state) - 0.5) * 2.0, (random(state) - 0.5) * 2.0, (random(state) - 0.5) * 2.0));
+                float3 random_dir = float3((random(state) - 0.5) * 2.0, (random(state) - 0.5) * 2.0, (random(state) - 0.5) * 2.0);
+                while (length(random_dir) > 1.0) {
+                    random_dir = float3((random(state) - 0.5) * 2.0, (random(state) - 0.5) * 2.0, (random(state) - 0.5) * 2.0);
+                }
+                random_dir = normalize(random_dir);
                 beam.ori = beam.ori + beam.dir * beam.t;
                 beam.dir = normalize(random_dir + (mirror_norm * beam_side));
                 //beam.dir = random_dir;
-                rnd = random_dir;
                 beam.t = 1e30f;
             } else {
                 mirror_hits++;
@@ -321,8 +339,8 @@ kernel void compute_shader (
         }
     }
     //texout.write(float4(color, 1.0), pixel);
-    const int max_index = 16 * 56 / 16;
-    threadgroup float3 test[max_index * 16];
+    int max_index = dimensions.x * dimensions.y / ppc;
+    threadgroup float3 test[1024];
     test[flat_index] = float3(sqrt(max(incoming_light.x, 0.0)), sqrt(max(incoming_light.y, 0.0)), sqrt(max(incoming_light.z, 0.0)));
     threadgroup_barrier(mem_flags::mem_none);
 
@@ -349,8 +367,7 @@ kernel void compute_shader (
         packed_pix = (packed_pix << 16) | pixel.y;
         float float_pix = as_type<float>(packed_pix);
 
-        pixel_data[(pixel_buffer_index * 16) + pixel_number] = float4(test[pixel_number * max_index], float_pix);
-        //pixel_data[(pixel_buffer_index * 16) + pixel_number] = float4(rnd, float_pix);
+        pixel_data[(pixel_buffer_index * ppc) + pixel_number] = float4(test[pixel_number * max_index], float_pix);
         texout.write(float4(test[pixel_number * max_index], 1.0), pixel);
         //pixel_data[(pixel_buffer_index * 16) + pixel_number] = pixel;
     }
