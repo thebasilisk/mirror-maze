@@ -263,7 +263,7 @@ fn gen_pixels (view_width : f32, view_height : f32, pixel_chunk_size : u32) -> V
         }
     }
     let mut rng = thread_rng();
-    println!("len {}", out_pixels.len());
+    // println!("len {}", out_pixels.len());
     out_pixels.shuffle(&mut rng);
     out_pixels
 }
@@ -770,7 +770,7 @@ fn main() {
 
     println!("Generating pixel addresses..");
 
-    let original_pixels = gen_pixels(view_width, view_height, chunk_width);
+    let mut original_pixels = gen_pixels(view_width, view_height, chunk_width);
     let mut pixels = original_pixels.clone();
     let initial_pixel_data = random_pixels(threadgroups_per_grid.width, threadgroups_per_grid.height, &mut pixels, &original_pixels);
     println!("Done!");
@@ -872,20 +872,20 @@ fn main() {
         _ => None,
     };
 
-    if option_addr.is_none() {
-        client = UdpSocket::bind("0.0.0.0:0").expect("Error binding second time");
-        client.set_broadcast(true).unwrap();
-        client.set_read_timeout(Some(std::time::Duration::new(1, 0))).unwrap();
-        option_addr = loop {
-            client.send_to(&[0], "255.255.255.255:8080").unwrap();
-            match client.recv_from(&mut buf) {
-                Ok((amt, _)) if amt != 1 => println!("{amt}"),
-                Ok((amt, addr)) if amt == 1 => break Some(addr.to_string()),
-                Ok(_) => println!("hm?"),
-                _ => println!("Searching..?"),
-            }
-        };
-    }
+    // if option_addr.is_none() {
+    //     client = UdpSocket::bind("0.0.0.0:0").expect("Error binding second time");
+    //     client.set_broadcast(true).unwrap();
+    //     client.set_read_timeout(Some(std::time::Duration::new(1, 0))).unwrap();
+    //     option_addr = loop {
+    //         client.send_to(&[0], "255.255.255.255:8080").unwrap();
+    //         match client.recv_from(&mut buf) {
+    //             Ok((amt, _)) if amt != 1 => println!("{amt}"),
+    //             Ok((amt, addr)) if amt == 1 => break Some(addr.to_string()),
+    //             Ok(_) => println!("hm?"),
+    //             _ => println!("Searching..?"),
+    //         }
+    //     };
+    // }
 
     let other_addr = &option_addr.unwrap_or(String::from("127.0.0.1:8080"));
     client.send_to(&[0], other_addr).unwrap();
@@ -1004,7 +1004,8 @@ fn main() {
                         println!("Help!");
                     } else {
                         quat = new_quat;
-                        pixels.splice(0..0, original_pixels.clone());
+                        original_pixels = gen_pixels(view_width, view_height, chunk_width);
+                        pixels.splice(.., original_pixels.clone());
                     }
                     rot_updated = false;
                 }
