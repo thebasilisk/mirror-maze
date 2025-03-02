@@ -4,12 +4,11 @@ mod maths;
 use core::panic;
 use std::{ffi::c_float, mem, net::UdpSocket};
 
-use objc2::rc::Retained;
-use rand::{random, rngs::StdRng, seq::SliceRandom, thread_rng, Rng, SeedableRng};
+use rand::{rngs::StdRng, seq::SliceRandom, thread_rng, Rng, SeedableRng};
 use objc::rc::autoreleasepool;
-use objc2_app_kit::{NSAnyEventMask, NSApp, NSApplication, NSApplicationActivationPolicy, NSBitmapImageRep, NSEventType, NSImage, NSWindowStyleMask, NSCursor};
+use objc2_app_kit::{NSAnyEventMask, NSApp, NSApplication, NSApplicationActivationPolicy, NSBitmapImageRep, NSEventType, NSImage, NSWindowStyleMask};
 use objc2_foundation::{MainThreadMarker, NSComparisonResult, NSData, NSDate, NSDefaultRunLoopMode};
-use utils::{copy_to_buf, get_library, get_next_frame, init_nsstring, initialize_window, make_buf, new_metal_layer, new_render_pass_descriptor, prepare_pipeline_state, set_window_layer};
+use utils::{copy_to_buf, get_library, get_next_frame, initialize_window, make_buf, new_metal_layer, new_render_pass_descriptor, prepare_pipeline_state, set_window_layer};
 use maths::{calculate_quaternion, float3_add, float3_subtract, quat_mult, scale3, update_quat_angle, Float2, Float3, Float4};
 
 use metal::*;
@@ -25,7 +24,7 @@ struct Camera {
 
 #[repr(C)]
 #[derive(Debug, Clone)]
-struct uniform {
+struct Uniform {
     cam : Camera,
     view_width : f32,
     view_height : f32,
@@ -89,8 +88,7 @@ impl BVHNode {
         if self.tri_count == 1 {
             return;
         }
-        let diag = float3_subtract(self.aabb_max, self.aabb_min);
-        let mut axis = 0;
+        let axis;
         let mut best_pos = 0.0;
         let mut best_cost = 1e30f32;
         let mut best_axis = 6;
@@ -181,6 +179,7 @@ impl BVHNode {
     }
 }
 
+#[allow(non_camel_case_types)]
 struct aabb {
     bmin : Float3,
     bmax : Float3
@@ -282,43 +281,43 @@ fn random_pixels (width : u64, height : u64, pixels : &mut Vec<(u32, u32)>, orig
     }
     pixel_update_data
 }
-struct ray {
-    ori : Float3,
-    dir : Float3
-}
-fn intersect_aabb(beam : &ray , bmin : Float3, bmax : Float3) -> bool {
-    let tx1 = (bmin.0 - beam.ori.0) / beam.dir.0;
-    let tx2 = (bmax.0 - beam.ori.0) / beam.dir.0;
-    // println!("tx");
-    // println!("{tx1}");
-    // println!("{tx2}");
-    let tmin = tx1.min(tx2);
-    let tmax = tx1.max(tx2);
-    // println!("tmix");
-    // println!("{tmin}");
-    // println!("{tmax}");
-    let ty1 = (bmin.1 - beam.ori.1) / beam.dir.1;
-    let ty2 = (bmax.1 - beam.ori.1) / beam.dir.1;
-    // println!("ty");
-    // println!("{ty1}");
-    // println!("{ty2}");
-    let tmin = tmin.max(ty1.min(ty2));
-    let tmax = tmax.min(ty1.max(ty2));
-    // println!("tmix2");
-    // println!("{tmin}");
-    // println!("{tmax}");
-    let tz1 = (bmin.2 - beam.ori.2) / beam.dir.2;
-    let tz2 = (bmax.2 - beam.ori.2) / beam.dir.2;
-    // println!("tz");
-    // println!("{tz1}");
-    // println!("{tz2}");
-    let tmin = tmin.max(tz1.min(tz2));
-    let tmax = tmax.min(tz1.max(tz2));
-    // println!("tmix3");
-    // println!("{tmin}");
-    // println!("{tmax}");
-    return tmax >= tmin && tmin < 1e30f32 && tmax > 0.0;
-}
+// struct ray {
+//     ori : Float3,
+//     dir : Float3
+// }
+// fn intersect_aabb(beam : &ray , bmin : Float3, bmax : Float3) -> bool {
+//     let tx1 = (bmin.0 - beam.ori.0) / beam.dir.0;
+//     let tx2 = (bmax.0 - beam.ori.0) / beam.dir.0;
+//     // println!("tx");
+//     // println!("{tx1}");
+//     // println!("{tx2}");
+//     let tmin = tx1.min(tx2);
+//     let tmax = tx1.max(tx2);
+//     // println!("tmix");
+//     // println!("{tmin}");
+//     // println!("{tmax}");
+//     let ty1 = (bmin.1 - beam.ori.1) / beam.dir.1;
+//     let ty2 = (bmax.1 - beam.ori.1) / beam.dir.1;
+//     // println!("ty");
+//     // println!("{ty1}");
+//     // println!("{ty2}");
+//     let tmin = tmin.max(ty1.min(ty2));
+//     let tmax = tmax.min(ty1.max(ty2));
+//     // println!("tmix2");
+//     // println!("{tmin}");
+//     // println!("{tmax}");
+//     let tz1 = (bmin.2 - beam.ori.2) / beam.dir.2;
+//     let tz2 = (bmax.2 - beam.ori.2) / beam.dir.2;
+//     // println!("tz");
+//     // println!("{tz1}");
+//     // println!("{tz2}");
+//     let tmin = tmin.max(tz1.min(tz2));
+//     let tmax = tmax.min(tz1.max(tz2));
+//     // println!("tmix3");
+//     // println!("{tmin}");
+//     // println!("{tmax}");
+//     return tmax >= tmin && tmin < 1e30f32 && tmax > 0.0;
+// }
 
 struct TreeBuilder {
     nodes : Vec<Option<usize>>
@@ -640,7 +639,7 @@ fn main() {
     //     ori : Float3::single(0.5),
     //     dir : Float3(0.0001, 0.0001, 1.0)
     // };
-    for (n, node) in nodes.iter().enumerate() {
+    for (_, node) in nodes.iter().enumerate() {
         // if node.tri_count == 1 && intersect_aabb(&beam, node.aabb_min, node.aabb_max) {
         //     println!("Yay! {:?}", mirrors[indices[node.left_first as usize]].origin);
         // }
@@ -725,8 +724,7 @@ fn main() {
 
     unsafe {
         app.finishLaunching();
-        //The method they recommend doesn't exist when I try to use it
-        app.activateIgnoringOtherApps(true);
+        app.activate();
         window.makeKeyAndOrderFront(None);
     };
 
@@ -832,12 +830,12 @@ fn main() {
     let mut half_theta = quat.3.acos();
 
     let init_cam : Camera = Camera { camera_center, focal_length, rotation : quat, viewport: Float2(viewport_width, viewport_height) };
-    let mut uni = uniform{view_width, view_height, cam: init_cam, chunk_width};
+    let mut uni = Uniform{view_width, view_height, cam: init_cam, chunk_width};
     // let cam_buf = make_buf(&vec![init_cam], &device);
 
-    let mirror_count_data = vec![mirrors.len() as u32];
+    let _mirror_count_data = vec![mirrors.len() as u32];
 
-    let fps = 30.0f32;
+    let fps = 60.0f32;
     let mut frames = 0;
     let mut frame_time = get_next_frame(fps as f64);
 
@@ -908,7 +906,7 @@ fn main() {
     compute_encoder.set_buffer(1, Some(&mirror_buf), 0);
     compute_encoder.set_buffer(2, Some(&node_buf), 0);
     compute_encoder.set_buffer(3, Some(&index_buf), 0);
-    compute_encoder.set_bytes(4, size_of::<uniform>() as u64, vec![uni.clone()].as_ptr() as *const _);
+    compute_encoder.set_bytes(4, size_of::<Uniform>() as u64, vec![uni.clone()].as_ptr() as *const _);
     compute_encoder.set_buffer(5, Some(&mat_buf), 0);
     compute_encoder.set_buffer(6, Some(&emi_buf), 0);
     compute_encoder.set_buffer(7, Some(&pixel_data_buf), 0);
@@ -996,7 +994,7 @@ fn main() {
                     }
                 }
 
-                if let Some(hit) = check_collision(&nodes, &aabb{ bmin : float3_subtract(camera_center, player_diag), bmax : float3_add(camera_center, player_diag)}, 0) {
+                if let Some(_) = check_collision(&nodes, &aabb{ bmin : float3_subtract(camera_center, player_diag), bmax : float3_add(camera_center, player_diag)}, 0) {
                     camera_center = prev_cam_center;
                 }
 
@@ -1006,7 +1004,7 @@ fn main() {
                         println!("Help!");
                     } else {
                         quat = new_quat;
-                        // pixels.splice(0..0, original_pixels.clone());
+                        pixels.splice(0..0, original_pixels.clone());
                     }
                     rot_updated = false;
                 }
@@ -1014,7 +1012,7 @@ fn main() {
                     println!("Help!");
                 } else {
                     let cam : Camera = Camera { camera_center, focal_length, rotation : quat, viewport: Float2(viewport_width, viewport_height) };
-                    uni = uniform{view_width, view_height, cam, chunk_width};
+                    uni = Uniform{view_width, view_height, cam, chunk_width};
                 }
                 //Get a texture from the MetalLayer that we can actually draw to
                 let drawable = layer.next_drawable().expect("Unable to find drawable");
@@ -1031,7 +1029,7 @@ fn main() {
                 compute_encoder.set_buffer(1, Some(&mirror_buf), 0);
                 compute_encoder.set_buffer(2, Some(&node_buf), 0);
                 compute_encoder.set_buffer(3, Some(&index_buf), 0);
-                compute_encoder.set_bytes(4, size_of::<uniform>() as u64, vec![uni.clone()].as_ptr() as *const _);
+                compute_encoder.set_bytes(4, size_of::<Uniform>() as u64, vec![uni.clone()].as_ptr() as *const _);
                 compute_encoder.set_buffer(5, Some(&mat_buf), 0);
                 compute_encoder.set_buffer(6, Some(&emi_buf), 0);
                 compute_encoder.set_buffer(7, Some(&pixel_data_buf), 0);
