@@ -5,7 +5,7 @@ use core::panic;
 use std::{ffi::c_float, mem, net::UdpSocket};
 
 use objc2::rc::Retained;
-use rand::{random, seq::SliceRandom, thread_rng};
+use rand::{random, rngs::StdRng, seq::SliceRandom, thread_rng, Rng, SeedableRng};
 use objc::rc::autoreleasepool;
 use objc2_app_kit::{NSAnyEventMask, NSApp, NSApplication, NSApplicationActivationPolicy, NSBitmapImageRep, NSEventType, NSImage, NSWindowStyleMask, NSCursor};
 use objc2_foundation::{MainThreadMarker, NSComparisonResult, NSData, NSDate, NSDefaultRunLoopMode};
@@ -402,7 +402,8 @@ fn main() {
         }
     }
 
-    edges.shuffle(&mut thread_rng());
+    let mut rng = StdRng::seed_from_u64(0);
+    edges.shuffle(&mut rng);
 
 
     for (x, y, up) in edges {
@@ -481,14 +482,14 @@ fn main() {
             Float3(0.0, -10.0, 0.0),
             wall_color
         ));
-        if random::<f32>() < 0.85 {
+        if rng.gen::<f32>() < 0.85 {
             materials.push(false);
         } else {
             materials.push(true);
         }
         emissions.push(Float4(1.0, 0.0, 0.0, 0.0));
 
-        if wall.2 <= 2.0 && random::<f32>() < 0.3 {
+        if wall.2 <= 2.0 && rng.gen::<f32>() < 0.3 {
             mirrors.push(Plane::new(
                 Float3(-10.0 * (height as f32 / 2.0) + (wall.0 * 10.0) + 0.1, 2.0, -10.0 * (height as f32 / 2.0) + (wall.1 * 10.0)),
                 Float3(0.0, 0.0, 9.9),
@@ -507,14 +508,14 @@ fn main() {
             Float3(0.0, -10.0, 0.0),
             wall_color
         ));
-        if random::<f32>() < 0.90 {
+        if rng.gen::<f32>() < 0.90 {
             materials.push(false);
         } else {
             materials.push(true);
         }
         emissions.push(Float4(1.0, 0.0, 0.0, 0.0));
 
-        if wall.2 <= 2.0 && random::<f32>() < 0.3 {
+        if wall.2 <= 2.0 && rng.gen::<f32>() < 0.3 {
             mirrors.push(Plane::new(
                 Float3(-10.0 * (height as f32 / 2.0) + (wall.1 * 10.0), 2.0, -10.0 * (height as f32 / 2.0) + (wall.0 * 10.0) + 0.1),
                 Float3(9.9, 0.0, 0.0),
@@ -883,11 +884,11 @@ fn main() {
                 Ok((amt, _)) if amt != 1 => println!("{amt}"),
                 Ok((amt, addr)) if amt == 1 => break Some(addr.to_string()),
                 Ok(_) => println!("hm?"),
-                _ => println!("Timeout..?"),
+                _ => println!("Searching..?"),
             }
         };
     }
-    // println!("{}", other_addr.unwrap());
+
     let other_addr = &option_addr.unwrap_or(String::from("127.0.0.1:8080"));
     client.send_to(&[0], other_addr).unwrap();
     client.set_nonblocking(true).unwrap();
