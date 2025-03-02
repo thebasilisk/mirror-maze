@@ -663,8 +663,8 @@ fn main() {
         NSWindowStyleMask::Titled.union(
         NSWindowStyleMask::Closable);
 
-    let view_width : f32 = 1024.0;
-    let view_height : f32 = 768.0;
+    let view_width : f32 = 512.0 * 2.0;
+    let view_height : f32 = 384.0 * 2.0;
 
     let chunk_width = 4u32;
     let pixels_per_chunk = chunk_width * chunk_width;
@@ -873,20 +873,20 @@ fn main() {
         _ => None,
     };
 
-    // if option_addr.is_none() {
-    //     client = UdpSocket::bind("0.0.0.0:0").expect("Error binding second time");
-    //     client.set_broadcast(true).unwrap();
-    //     client.set_read_timeout(Some(std::time::Duration::new(1, 0))).unwrap();
-    //     option_addr = loop {
-    //         client.send_to(&[0], "255.255.255.255:8080").unwrap();
-    //         match client.recv_from(&mut buf) {
-    //             Ok((amt, _)) if amt != 1 => println!("{amt}"),
-    //             Ok((amt, addr)) if amt == 1 => break Some(addr.to_string()),
-    //             Ok(_) => println!("hm?"),
-    //             _ => println!("Timeout..?"),
-    //         }
-    //     };
-    // }
+    if option_addr.is_none() {
+        client = UdpSocket::bind("0.0.0.0:0").expect("Error binding second time");
+        client.set_broadcast(true).unwrap();
+        client.set_read_timeout(Some(std::time::Duration::new(1, 0))).unwrap();
+        option_addr = loop {
+            client.send_to(&[0], "255.255.255.255:8080").unwrap();
+            match client.recv_from(&mut buf) {
+                Ok((amt, _)) if amt != 1 => println!("{amt}"),
+                Ok((amt, addr)) if amt == 1 => break Some(addr.to_string()),
+                Ok(_) => println!("hm?"),
+                _ => println!("Timeout..?"),
+            }
+        };
+    }
     // println!("{}", other_addr.unwrap());
     let other_addr = &option_addr.unwrap_or(String::from("127.0.0.1:8080"));
     client.send_to(&[0], other_addr).unwrap();
@@ -936,10 +936,15 @@ fn main() {
     command_buffer.commit();
 
     let mut i = 0;
-    let div = 6;
+    // let div = 6;
     let mut pixel_bytes : &[u8] = &[];
     let data_width = 16;
-    let packet_size = threads * data_width / div;
+    // let packet_size = threads * data_width / div;
+    let packet_size = 8192;
+    let div = (threads * data_width) / packet_size;
+    println!("packet size: {}", packet_size);
+    println!("threads: {threads}");
+    println!("div: {}", div);
 
     let mut incoming_pixels :Vec<u8> = Vec::new();
     loop {
@@ -1065,7 +1070,8 @@ fn main() {
             }
             loop {
                 if pixel_bytes.len() != 0 {
-                    // client.send_to(&pixel_bytes[(i * packet_size) as usize..(((i+1)) * packet_size) as usize], other_addr).expect("Couldn't send pixel_bytes");
+                    // println!("{}", pixel_bytes.len());
+                    client.send_to(&pixel_bytes[(i * packet_size) as usize..(((i+1)) * packet_size) as usize], other_addr).expect("Couldn't send pixel_bytes");
                 }
                 i = (i + 1) % div;
                 if i == 0 {
