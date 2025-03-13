@@ -28,7 +28,8 @@ struct Uniform {
     cam : Camera,
     view_width : f32,
     view_height : f32,
-    chunk_width : u32
+    chunk_width : u32,
+    time : u32
 }
 
 #[repr(C)]
@@ -830,7 +831,7 @@ fn main() {
     let mut half_theta = quat.3.acos();
 
     let init_cam : Camera = Camera { camera_center, focal_length, rotation : quat, viewport: Float2(viewport_width, viewport_height) };
-    let mut uni = Uniform{view_width, view_height, cam: init_cam, chunk_width};
+    let mut uni = Uniform{view_width, view_height, cam: init_cam, chunk_width, time : 0};
     // let cam_buf = make_buf(&vec![init_cam], &device);
 
     let _mirror_count_data = vec![mirrors.len() as u32];
@@ -986,10 +987,10 @@ fn main() {
                 let prev_cam_center = camera_center.clone();
                 for key in keys_pressed.iter() {
                     match key {
-                        0 => camera_center = float3_subtract(camera_center, quat_mult(Float3(10.0 / fps, 0.0, 0.0), quat)),
-                        1 => camera_center = float3_subtract(camera_center, quat_mult(Float3(0.0, 0.0, 10.0 / fps), quat)),
-                        2 => camera_center = float3_add(camera_center, quat_mult(Float3(10.0 / fps, 0.0, 0.0), quat)),
-                        13 => camera_center = float3_add(camera_center, quat_mult(Float3(0.0, 0.0, 10.0 / fps), quat)),
+                        0 => camera_center = float3_subtract(camera_center, quat_mult(Float3(5.0 / fps, 0.0, 0.0), quat)),
+                        1 => camera_center = float3_subtract(camera_center, quat_mult(Float3(0.0, 0.0, 5.0 / fps), quat)),
+                        2 => camera_center = float3_add(camera_center, quat_mult(Float3(5.0 / fps, 0.0, 0.0), quat)),
+                        13 => camera_center = float3_add(camera_center, quat_mult(Float3(0.0, 0.0, 5.0 / fps), quat)),
                         _ => ()
                     }
                 }
@@ -1013,7 +1014,7 @@ fn main() {
                     println!("Help!");
                 } else {
                     let cam : Camera = Camera { camera_center, focal_length, rotation : quat, viewport: Float2(viewport_width, viewport_height) };
-                    uni = Uniform{view_width, view_height, cam, chunk_width};
+                    uni = Uniform{view_width, view_height, cam, chunk_width, time : frames};
                 }
                 //Get a texture from the MetalLayer that we can actually draw to
                 let drawable = layer.next_drawable().expect("Unable to find drawable");

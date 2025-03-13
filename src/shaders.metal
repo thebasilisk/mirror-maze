@@ -215,22 +215,23 @@ vertex ColorInOut vertex_shader (
 fragment float4 fragment_shader (
     ColorInOut in [[stage_in]],
     //const device unsigned long *tex_dimensions [[ buffer(0) ]],
-    texture2d<float, access::sample> image [[ texture(0) ]]
+    texture2d<float, access::read_write> image [[ texture(0) ]]
 ) {
     float4 color = image.read(uint2(in.position.xy));
-    if (color.x == 0.0 && color.y == 0.0 && color.z == 0.0) {
-        color = (image.read(uint2(in.position.xy) + uint2(1,0)) + image.read(uint2(in.position.xy) + uint2(-1,0))) / 2.0;
-        color = (color / 2.0) + (image.read(uint2(in.position.xy) + uint2(0,1)) + image.read(uint2(in.position.xy) + uint2(0,-1))) / 4.0;
-    }
+    color += (image.read(uint2(in.position.xy) + uint2(1,0)) + image.read(uint2(in.position.xy) + uint2(-1,0))) / 2.0;
+    color += (image.read(uint2(in.position.xy) + uint2(0,1)) + image.read(uint2(in.position.xy) + uint2(0,-1))) / 2.0;
+    color /= 3.0;
+    image.write(float4((color.xyz), 1.0), uint2(in.position.xy));
     return float4(color.xyz, 1.0);
 }
 
 kernel void texture_update (
     const device uint2 *updated_pixels [[ buffer(0) ]],
     const device packed_float3 *pixel_data [[ buffer(1) ]],
-    texture2d<float, access::write> image [[ texture(0) ]],
+    texture2d<float, access::read_write> image [[ texture(0) ]],
     uint gid [[ thread_position_in_grid ]]
 ) {
+    //float3 pixel = (image.read(updated_pixels[gid]).xyz + pixel_data[gid]) / 2.0;
     image.write(float4(pixel_data[gid], 1.0), updated_pixels[gid]);
 }
 
@@ -239,10 +240,11 @@ struct uni {
     float view_width;
     float view_height;
     uint chunk_width;
+    uint time;
 };
 
 kernel void compute_shader (
-    texture2d<float, access::write> texout [[ texture(0) ]],
+    texture2d<float, access::read_write> texout [[ texture(0) ]],
     texture2d<float, access::sample> noise [[ texture(1) ]],
     const device uint2 *pixel_update_buffer [[ buffer(0) ]],
     const device rect *mirrors [[ buffer(1) ]],
@@ -295,7 +297,7 @@ kernel void compute_shader (
     int mirror_limit = 15;
     float lighting_factor = 0.25;
 
-    uint seed = noise_sample.x + noise_sample.y + texid.x * 15823 + texid.y * 9737333;
+    uint seed = noise_sample.x + noise_sample.y + texid.x * 15823 + texid.y * 9737333 + uniforms[0].time;
 
     thread uint &state = seed;
 
@@ -368,7 +370,8 @@ kernel void compute_shader (
         float float_pix = as_type<float>(packed_pix);
 
         pixel_data[(pixel_buffer_index * ppc) + pixel_number] = float4(test[pixel_number * max_index], float_pix);
-        texout.write(float4(test[pixel_number * max_index], 1.0), pixel);
+        float3 old_pixel = texout.read(pixel).xyz;
+        texout.write(float4((test[pixel_number * max_index] + old_pixel) * 0.5, 1.0), pixel);
         //pixel_data[(pixel_buffer_index * 16) + pixel_number] = pixel;
     }
 }
