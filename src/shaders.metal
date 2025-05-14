@@ -371,7 +371,7 @@ kernel void compute_shader (
 
         pixel_data[(pixel_buffer_index * ppc) + pixel_number] = float4(test[pixel_number * max_index], float_pix);
         float3 old_pixel = texout.read(pixel).xyz;
-        texout.write(float4((test[pixel_number * max_index] + old_pixel) * 0.5, 1.0), pixel);
+        texout.write(float4((test[pixel_number * max_index] * 0.7 + old_pixel * 0.3), 1.0), pixel);
         //pixel_data[(pixel_buffer_index * 16) + pixel_number] = pixel;
     }
 }
