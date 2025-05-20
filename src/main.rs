@@ -585,19 +585,7 @@ fn main() {
     emissions.push(Float4(1.0, 0.8, 0.3, 0.02));
     // emissions.push(Float4(1.0, 0.45, 0.15, 0.6));
 
-    println!("Total: {:?}", mirrors.len());
     let (nodes, indices) = build_bvh(mirrors.len(), mirrors.clone());
-    println!("Nodes length, {}", nodes.len());
-    for (_, node) in nodes.iter().enumerate() {
-        if node.tri_count > 1 {
-            for i in node.left_first..node.left_first + node.tri_count {
-                println!(
-                    "mirror origin: {:?}",
-                    mirrors[indices[i as usize] as usize].origin
-                );
-            }
-        }
-    }
 
     //Many macOS api calls are main thread only
     let mtm = MainThreadMarker::new().expect("Current thread isn't safe?");
@@ -787,61 +775,17 @@ fn main() {
     let mut keys_pressed = vec![112];
     let mut rot_updated = false;
 
-    //Get a texture from the MetalLayer that we can actually draw to
-    let drawable = layer.next_drawable().expect("Unable to find drawable");
-    let texture = drawable.texture();
-
-    //Create a new command buffer and an encoder to write to it
-    let command_buffer = command_queue.new_command_buffer();
-    let render_pass = new_render_pass_descriptor(texture);
-    let compute_encoder = command_buffer.new_compute_command_encoder();
-
-    compute_encoder.set_compute_pipeline_state(&compute_pipeline_state);
-    compute_encoder.set_buffer(0, Some(&pixel_update_buf), 0);
-    compute_encoder.set_buffer(1, Some(&mirror_buf), 0);
-    compute_encoder.set_buffer(2, Some(&node_buf), 0);
-    compute_encoder.set_buffer(3, Some(&index_buf), 0);
-    compute_encoder.set_bytes(
-        4,
-        size_of::<Uniform>() as u64,
-        vec![uni.clone()].as_ptr() as *const _,
-    );
-    compute_encoder.set_buffer(5, Some(&mat_buf), 0);
-    compute_encoder.set_buffer(6, Some(&emi_buf), 0);
-    compute_encoder.set_buffer(7, Some(&pixel_data_buf), 0);
-    // compute_encoder.set_bytes(6, size_of::<u32>() as u64, mirror_count_data.as_ptr() as *const _);
-    compute_encoder.set_texture(0, Some(&screen_tex));
-    compute_encoder.set_texture(1, Some(&noise_tex));
-    //compute_encoder.set_threadgroup_memory_length(0, 16);
-    compute_encoder.dispatch_thread_groups(threadgroups_per_grid, threads_per_threadgroup);
-    compute_encoder.end_encoding();
-
-    let encoder = command_buffer.new_render_command_encoder(render_pass);
-    encoder.set_render_pipeline_state(&render_pipeline_state);
-    // encoder.set_vertex_buffer(0, Some(&quad_buf), 0);
-    encoder.set_fragment_texture(0, Some(&screen_tex));
-    encoder.draw_primitives(MTLPrimitiveType::TriangleStrip, 0, 4);
-    encoder.end_encoding();
-    command_buffer.present_drawable(&drawable);
-    command_buffer.commit();
-
     loop {
         autoreleasepool(|| {
             // println!("{:?}", now.elapsed());
             // now = Instant::now();
 
             if app.windows().is_empty() {
-                // let pixel_bytes : &[(f32, f32, f32)]= unsafe { std::slice::from_raw_parts(pixel_data_buf.contents().cast(), (threadgroups_per_grid.width * threadgroups_per_grid.height * 16) as usize) };
-                // println!("{pixel_bytes:?}");
                 unsafe { app.terminate(None) };
             }
             if unsafe { frame_time.compare(&NSDate::now()) } == NSComparisonResult::Ascending {
                 frame_time = get_next_frame(fps as f64);
                 frames += 1;
-                // println!("{frames}");
-                // if frames % 120 == 0 {
-                //     original_pixels.shuffle(&mut rng);
-                // }
                 let pixel_data = random_pixels(
                     threadgroups_per_grid.width,
                     threadgroups_per_grid.height,
@@ -947,20 +891,16 @@ fn main() {
                 compute_encoder.set_buffer(5, Some(&mat_buf), 0);
                 compute_encoder.set_buffer(6, Some(&emi_buf), 0);
                 compute_encoder.set_buffer(7, Some(&pixel_data_buf), 0);
-                // compute_encoder.set_bytes(6, size_of::<u32>() as u64, mirror_count_data.as_ptr() as *const _);
                 compute_encoder.set_texture(0, Some(&screen_tex));
                 compute_encoder.set_texture(1, Some(&noise_tex));
-                //compute_encoder.set_threadgroup_memory_length(0, 16);
                 compute_encoder
                     .dispatch_thread_groups(threadgroups_per_grid, threads_per_threadgroup);
                 compute_encoder.end_encoding();
 
                 let encoder = command_buffer.new_render_command_encoder(render_pass);
                 encoder.set_render_pipeline_state(&render_pipeline_state);
-                // encoder.set_vertex_buffer(0, Some(&quad_buf), 0);
                 encoder.set_fragment_texture(0, Some(&screen_tex));
                 encoder.draw_primitives(MTLPrimitiveType::TriangleStrip, 0, 4);
-                // println!("Go!");
                 encoder.end_encoding();
                 command_buffer.present_drawable(&drawable);
                 command_buffer.commit();
