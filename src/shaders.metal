@@ -187,7 +187,6 @@ float random (thread uint &state) {
 
 
 vertex ColorInOut vertex_shader (
-    const device float3 *vert [[ buffer(0) ]],
     unsigned int vid [[ vertex_id ]]
 ) {
     ColorInOut out;

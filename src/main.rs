@@ -18,8 +18,8 @@ use objc2_foundation::{
 };
 use rand::{rngs::StdRng, seq::SliceRandom, thread_rng, Rng, SeedableRng};
 use utils::{
-    copy_to_buf, get_library, get_next_frame, initialize_window, make_buf, new_metal_layer,
-    new_render_pass_descriptor, prepare_pipeline_state, set_window_layer,
+    copy_to_buf, copy_to_buf_shared, get_library, get_next_frame, initialize_window, make_buf,
+    new_metal_layer, new_render_pass_descriptor, prepare_pipeline_state, set_window_layer,
 };
 
 use metal::*;
@@ -822,11 +822,14 @@ fn main() {
         NSBitmapImageRep::initWithData(mtm.alloc::<NSBitmapImageRep>(), &noise_data).unwrap()
     };
 
+    let mtl_resource_shared =
+        MTLResourceOptions::CPUCacheModeDefaultCache | MTLResourceOptions::StorageModeShared;
     println!("Creating noise texture from image");
     let noise_width = 512;
     let noise_height = 512;
     let tex_descriptor = TextureDescriptor::new();
     tex_descriptor.set_pixel_format(MTLPixelFormat::RGBA8Unorm);
+    tex_descriptor.set_storage_mode(MTLStorageMode::Shared);
     tex_descriptor.set_width(noise_width);
     tex_descriptor.set_height(noise_height);
 
@@ -879,16 +882,16 @@ fn main() {
             }
         }
     }
-    let pixel_update_buf = make_buf(&initial_pixel_data, &device);
-    let incoming_pix_buf = make_buf(&dummy_pix, &device);
-    let all_pix_buf = make_buf(&all_pixels, &device);
+    let pixel_update_buf = make_buf(&initial_pixel_data, None, &device);
+    let incoming_pix_buf = make_buf(&dummy_pix, Some(mtl_resource_shared), &device);
+    let all_pix_buf = make_buf(&all_pixels, Some(mtl_resource_shared), &device);
 
     let mut pixel_vec: Vec<Float3> = Vec::new();
     for _ in 0..threadgroups_per_grid.width * threadgroups_per_grid.height * 16 {
         pixel_vec.push(Float3(0.0, 0.0, 0.0));
     }
     // let mut pixel_vec : Vec<Float4> = Vec::new();
-    let pixel_data_buf = make_buf(&pixel_vec, &device);
+    let pixel_data_buf = make_buf(&pixel_vec, Some(mtl_resource_shared), &device);
 
     let quad: Vec<Float3> = vec![
         Float3(-1.0, 1.0, 0.0),
@@ -896,14 +899,14 @@ fn main() {
         Float3(-1.0, -1.0, 0.0),
         Float3(1.0, -1.0, 0.0),
     ];
-    let quad_buf = make_buf(&quad, &device);
+    // let quad_buf = make_buf(&quad, None, &device);
 
-    let mirror_buf = make_buf(&mirrors, &device);
-    let mat_buf = make_buf(&materials, &device);
-    let emi_buf = make_buf(&emissions, &device);
+    let mirror_buf = make_buf(&mirrors, None, &device);
+    let mat_buf = make_buf(&materials, None, &device);
+    let emi_buf = make_buf(&emissions, None, &device);
 
-    let node_buf = make_buf(&nodes, &device);
-    let index_buf = make_buf(&indices, &device);
+    let node_buf = make_buf(&nodes, None, &device);
+    let index_buf = make_buf(&indices, None, &device);
 
     let viewport_height = 2.0;
     let viewport_width = viewport_height * (view_width as f32 / view_height as f32);
@@ -1034,7 +1037,7 @@ fn main() {
 
     let encoder = command_buffer.new_render_command_encoder(render_pass);
     encoder.set_render_pipeline_state(&render_pipeline_state);
-    encoder.set_vertex_buffer(0, Some(&quad_buf), 0);
+    // encoder.set_vertex_buffer(0, Some(&quad_buf), 0);
     encoder.set_fragment_texture(0, Some(&screen_tex));
     encoder.draw_primitives(MTLPrimitiveType::TriangleStrip, 0, 4);
     encoder.end_encoding();
@@ -1205,8 +1208,8 @@ fn main() {
 
                 if !all_pixels.is_empty() {
                     // println!("{:?}", all_pixels.len());
-                    copy_to_buf(&updated_pixels, &incoming_pix_buf);
-                    copy_to_buf(&all_pixels, &all_pix_buf);
+                    copy_to_buf_shared(&updated_pixels, &incoming_pix_buf);
+                    copy_to_buf_shared(&all_pixels, &all_pix_buf);
                     let texup_encoder = command_buffer.new_compute_command_encoder();
                     texup_encoder.set_compute_pipeline_state(&tex_update_pipeline);
                     texup_encoder.set_buffer(0, Some(&incoming_pix_buf), 0);
@@ -1220,7 +1223,7 @@ fn main() {
 
                 let encoder = command_buffer.new_render_command_encoder(render_pass);
                 encoder.set_render_pipeline_state(&render_pipeline_state);
-                encoder.set_vertex_buffer(0, Some(&quad_buf), 0);
+                // encoder.set_vertex_buffer(0, Some(&quad_buf), 0);
                 encoder.set_fragment_texture(0, Some(&screen_tex));
                 encoder.draw_primitives(MTLPrimitiveType::TriangleStrip, 0, 4);
                 // println!("Go!");
