@@ -101,19 +101,6 @@ pub fn copy_to_buf<T>(data: &Vec<T>, dst: &Buffer) {
     dst.did_modify_range(NSRange::new(0 as u64, (data.len() * size_of::<T>()) as u64));
 }
 
-pub fn copy_to_buf_shared<T>(data: &Vec<T>, dst: &Buffer) {
-    let buf_pointer = dst.contents(); //how does this grab a mut pointer from a non mutable reference?
-    unsafe {
-        std::ptr::copy(data.as_ptr(), buf_pointer as *mut T, data.len() as usize);
-    }
-    // dst.did_modify_range(NSRange::new(0 as u64, (data.len() * size_of::<T>()) as u64));
-}
-
-// pub fn prepare_compute_state(device: &DeviceRef) {
-//     let descriptor = ComputePassDescriptor::new();
-//     descriptor.set_dispatch_type(MTLDis);
-// }
-
 //AppKit utils
 
 pub fn init_nsstring(str: &str, thread: MainThreadMarker) -> Retained<NSString> {
