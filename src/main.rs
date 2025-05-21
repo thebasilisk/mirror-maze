@@ -679,8 +679,6 @@ fn main() {
         NSBitmapImageRep::initWithData(mtm.alloc::<NSBitmapImageRep>(), &noise_data).unwrap()
     };
 
-    let mtl_resource_shared =
-        MTLResourceOptions::CPUCacheModeDefaultCache | MTLResourceOptions::StorageModeShared;
     println!("Creating noise texture from image");
     let noise_width = 512;
     let noise_height = 512;
@@ -723,15 +721,6 @@ fn main() {
     println!("Done!");
 
     let pixel_update_buf = make_buf(&initial_pixel_data, None, &device);
-
-    let mut pixel_vec: Vec<Float3> = Vec::new();
-    for _ in 0..threadgroups_per_grid.width * threadgroups_per_grid.height * 16 {
-        pixel_vec.push(Float3(0.0, 0.0, 0.0));
-    }
-    // let mut pixel_vec : Vec<Float4> = Vec::new();
-    let pixel_data_buf = make_buf(&pixel_vec, Some(mtl_resource_shared), &device);
-
-    // let quad_buf = make_buf(&quad, None, &device);
 
     let mirror_buf = make_buf(&mirrors, None, &device);
     let mat_buf = make_buf(&materials, None, &device);
@@ -890,7 +879,6 @@ fn main() {
                 );
                 compute_encoder.set_buffer(5, Some(&mat_buf), 0);
                 compute_encoder.set_buffer(6, Some(&emi_buf), 0);
-                compute_encoder.set_buffer(7, Some(&pixel_data_buf), 0);
                 compute_encoder.set_texture(0, Some(&screen_tex));
                 compute_encoder.set_texture(1, Some(&noise_tex));
                 compute_encoder

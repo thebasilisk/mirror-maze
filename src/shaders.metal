@@ -252,7 +252,6 @@ kernel void compute_shader (
     const device uni *uniforms [[ buffer(4) ]],
     const device bool *materials [[ buffer(5) ]],
     const device float4 *emissions [[ buffer(6) ]],
-    device float4 *pixel_data [[ buffer(7) ]],
     uint2 tgid [[ threadgroup_position_in_grid ]],
     uint2 gid [[ thread_position_in_threadgroup ]],
     uint2 texid [[ thread_position_in_grid ]],
@@ -363,14 +362,7 @@ kernel void compute_shader (
             test[pixel_number * max_index] += test[pixel_number * max_index + (8 * i)];
         }
         test[pixel_number * max_index] = test[pixel_number * max_index] / max_index;
-
-        uint packed_pix = pixel.x;
-        packed_pix = (packed_pix << 16) | pixel.y;
-        float float_pix = as_type<float>(packed_pix);
-
-        pixel_data[(pixel_buffer_index * ppc) + pixel_number] = float4(test[pixel_number * max_index], float_pix);
-        float3 old_pixel = texout.read(pixel).xyz;
-        texout.write(float4((test[pixel_number * max_index] * 0.7 + old_pixel * 0.3), 1.0), pixel);
-        //pixel_data[(pixel_buffer_index * 16) + pixel_number] = pixel;
+        //float3 old_pixel = texout.read(pixel).xyz;
+        texout.write(float4((test[pixel_number * max_index]), 1.0), pixel);
     }
 }
