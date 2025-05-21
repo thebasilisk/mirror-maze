@@ -1,8 +1,7 @@
 mod maths;
 mod utils;
 
-use core::panic;
-use std::{ffi::c_float, mem, net::UdpSocket};
+use std::{ffi::c_float, mem};
 
 use maths::{
     calculate_quaternion, float3_add, float3_subtract, quat_mult, scale3, update_quat_angle,
@@ -18,8 +17,8 @@ use objc2_foundation::{
 };
 use rand::{rngs::StdRng, seq::SliceRandom, thread_rng, Rng, SeedableRng};
 use utils::{
-    copy_to_buf, copy_to_buf_shared, get_library, get_next_frame, initialize_window, make_buf,
-    new_metal_layer, new_render_pass_descriptor, prepare_pipeline_state, set_window_layer,
+    copy_to_buf, get_library, get_next_frame, initialize_window, make_buf, new_metal_layer,
+    new_render_pass_descriptor, prepare_pipeline_state, set_window_layer,
 };
 
 use metal::*;
@@ -96,12 +95,6 @@ impl BVHNode {
             current_aabb.grow(plane.origin);
             current_aabb.grow(float3_add(plane.origin, plane.u));
             current_aabb.grow(float3_add(plane.origin, plane.v));
-            // self.aabb_min = self.aabb_min.fminf(plane.origin);
-            // self.aabb_max = self.aabb_max.fmaxf(plane.origin);
-            // self.aabb_min = self.aabb_min.fminf(float3_add(plane.origin, plane.u));
-            // self.aabb_max = self.aabb_max.fmaxf(float3_add(plane.origin, plane.u));
-            // self.aabb_min = self.aabb_min.fminf(float3_add(plane.origin, plane.v));
-            // self.aabb_max = self.aabb_max.fmaxf(float3_add(plane.origin, plane.v));
         }
         self.aabb_min = current_aabb.bmin;
         self.aabb_max = current_aabb.bmax;
@@ -331,43 +324,6 @@ fn random_pixels(
     }
     pixel_update_data
 }
-// struct ray {
-//     ori : Float3,
-//     dir : Float3
-// }
-// fn intersect_aabb(beam : &ray , bmin : Float3, bmax : Float3) -> bool {
-//     let tx1 = (bmin.0 - beam.ori.0) / beam.dir.0;
-//     let tx2 = (bmax.0 - beam.ori.0) / beam.dir.0;
-//     // println!("tx");
-//     // println!("{tx1}");
-//     // println!("{tx2}");
-//     let tmin = tx1.min(tx2);
-//     let tmax = tx1.max(tx2);
-//     // println!("tmix");
-//     // println!("{tmin}");
-//     // println!("{tmax}");
-//     let ty1 = (bmin.1 - beam.ori.1) / beam.dir.1;
-//     let ty2 = (bmax.1 - beam.ori.1) / beam.dir.1;
-//     // println!("ty");
-//     // println!("{ty1}");
-//     // println!("{ty2}");
-//     let tmin = tmin.max(ty1.min(ty2));
-//     let tmax = tmax.min(ty1.max(ty2));
-//     // println!("tmix2");
-//     // println!("{tmin}");
-//     // println!("{tmax}");
-//     let tz1 = (bmin.2 - beam.ori.2) / beam.dir.2;
-//     let tz2 = (bmax.2 - beam.ori.2) / beam.dir.2;
-//     // println!("tz");
-//     // println!("{tz1}");
-//     // println!("{tz2}");
-//     let tmin = tmin.max(tz1.min(tz2));
-//     let tmax = tmax.min(tz1.max(tz2));
-//     // println!("tmix3");
-//     // println!("{tmin}");
-//     // println!("{tmax}");
-//     return tmax >= tmin && tmin < 1e30f32 && tmax > 0.0;
-// }
 
 struct TreeBuilder {
     nodes: Vec<Option<usize>>,
@@ -394,37 +350,6 @@ impl TreeBuilder {
         self.nodes[root] = Some(parent);
     }
 }
-
-// #[derive(Debug, PartialEq, Eq, Clone)]
-// struct Tree <'a> {
-//     index : u8,
-//     parent : Option<Box<&'a Tree<'a>>>
-// }
-
-// impl <'a> Tree<'a> {
-//     fn new(index : u8) -> Self {
-//         Tree {
-//             index,
-//             parent : None
-//         }
-//     }
-//     fn root(&self) -> Box<Tree> {
-//         match self.parent.clone() {
-//             Some(parent) => parent.root(),
-//             None => Box::new(self.clone()),
-//         }
-//     }
-//     fn set_parent(&mut self, new_parent : Option<Box<&'a Tree>>) {
-//         self.parent = new_parent;
-//     }
-//     fn connected(&self, other : &Tree) -> bool {
-//         self.root() == other.root()
-//     }
-//     fn connect(&self, other : &mut Tree) {
-//         // println!("{:?}", other.root());
-//         other.root().set_parent(Some(Box::new(self)));
-//     }
-// }
 
 const IMAGE: &[u8] = include_bytes!(".././textures/noiseTexture-2.png");
 
@@ -589,37 +514,6 @@ fn main() {
         }
     }
 
-    // for i in 0..10 {
-    //     if i % 2 == 0 {
-    //         //continue;
-    //     }
-    //     mirrors.push(Plane::new(
-    //         Float3(-10.0 + (i as f32 * 2.0), 0.0, 15.0 - (5i8 - i).abs() as f32),
-    //         Float3(3.0, 0.0, (random::<f32>() - 0.5) * 2.0),
-    //         Float3(0.0, 3.0, (random::<f32>() - 0.5) * 2.0),
-    //         Float3(i as f32 / 10.0, (10.0 - i as f32) / 10.0, (5.0 - i as f32).abs() / 10.0)
-    //     ));
-    //     if i % 3 == 0 {
-    //         materials.push(true);
-    //     } else {
-    //         materials.push(false);
-    //     }
-    // }
-    // for i in -10..10 {
-    //     for j in -10..10 {
-    //         mirrors.push(Plane::new(
-    //             Float3((i * 5) as f32 + random::<f32>(), random::<f32>(), (j * 5) as f32 +  random::<f32>()),
-    //             Float3(random::<f32>() * 3.0, 0.0, random::<f32>() * 3.0),
-    //             Float3(0.0, random::<f32>() * 3.0, random::<f32>() * 3.0),
-    //             Float3(random::<f32>(), random::<f32>(), random::<f32>())
-    //         ));
-    //         if i % 3 == 0 {
-    //             materials.push(true);
-    //         } else {
-    //             materials.push(false);
-    //         }
-    //     }
-    // }
     mirrors.push(Plane::new(
         Float3(-50.0, 2.0, -50.0),
         Float3(0.0, -20.0, 0.0),
@@ -691,31 +585,7 @@ fn main() {
     emissions.push(Float4(1.0, 0.8, 0.3, 0.02));
     // emissions.push(Float4(1.0, 0.45, 0.15, 0.6));
 
-    println!("Total: {:?}", mirrors.len());
     let (nodes, indices) = build_bvh(mirrors.len(), mirrors.clone());
-    println!("Nodes length, {}", nodes.len());
-    // println!("{}", nodes.len());
-    // println!("{:?}", nodes[2].aabb_min);
-    // println!("{:?}", nodes[2].aabb_max);
-    // let beam = ray {
-    //     ori : Float3::single(0.5),
-    //     dir : Float3(0.0001, 0.0001, 1.0)
-    // };
-    for (_, node) in nodes.iter().enumerate() {
-        // if node.tri_count == 1 && intersect_aabb(&beam, node.aabb_min, node.aabb_max) {
-        //     println!("Yay! {:?}", mirrors[indices[node.left_first as usize]].origin);
-        // }
-        // print!("{n}: {},   aabb:", node.left_first);
-        // println!("{:?}, {:?}", node.aabb_min, node.aabb_max);
-        if node.tri_count > 1 {
-            for i in node.left_first..node.left_first + node.tri_count {
-                println!(
-                    "mirror origin: {:?}",
-                    mirrors[indices[i as usize] as usize].origin
-                );
-            }
-        }
-    }
 
     //Many macOS api calls are main thread only
     let mtm = MainThreadMarker::new().expect("Current thread isn't safe?");
@@ -762,7 +632,6 @@ fn main() {
     let compute_function = shader_lib
         .get_function("compute_shader", None)
         .expect("Could not find compute function in library");
-    let tex_updatefunction = shader_lib.get_function("texture_update", None).unwrap();
     let compute_descriptor = ComputePipelineDescriptor::new();
     compute_descriptor.set_compute_function(Some(&compute_function));
     //let compute_pipeline_state = device.new_compute_pipeline_state_with_function(&compute_function).expect("Error creating compute pipeline");
@@ -789,18 +658,6 @@ fn main() {
         threadgroups_per_grid.height * threadgroups_per_grid.width
     );
 
-    let tex_update_pipeline = device
-        .new_compute_pipeline_state_with_function(&tex_updatefunction)
-        .unwrap();
-    let threads =
-        threadgroups_per_grid.width * threadgroups_per_grid.height * pixels_per_chunk as u64;
-    let threads_per_grid = MTLSize::new(threads, 1, 1);
-    let threads_per_thread_group = MTLSize::new(
-        threads.min(tex_update_pipeline.max_total_threads_per_threadgroup()),
-        1,
-        1,
-    );
-
     unsafe {
         app.finishLaunching();
         app.activate();
@@ -822,8 +679,6 @@ fn main() {
         NSBitmapImageRep::initWithData(mtm.alloc::<NSBitmapImageRep>(), &noise_data).unwrap()
     };
 
-    let mtl_resource_shared =
-        MTLResourceOptions::CPUCacheModeDefaultCache | MTLResourceOptions::StorageModeShared;
     println!("Creating noise texture from image");
     let noise_width = 512;
     let noise_height = 512;
@@ -865,41 +720,7 @@ fn main() {
     );
     println!("Done!");
 
-    let mut all_pixels = Vec::new();
-    let mut dummy_pix = Vec::new();
-    for n in 0..initial_pixel_data.len() {
-        let pix = initial_pixel_data[n];
-        for i in 0..chunk_width {
-            for j in 0..chunk_width {
-                all_pixels.push(Float3(0.0, 0.0, 0.0));
-                all_pixels.push(Float3(0.0, 0.0, 0.0));
-                all_pixels.push(Float3(0.0, 0.0, 0.0));
-                all_pixels.push(Float3(0.0, 0.0, 0.0));
-                dummy_pix.push((pix.0 + i, pix.1 + j));
-                dummy_pix.push((pix.0 + i, pix.1 + j));
-                dummy_pix.push((pix.0 + i, pix.1 + j));
-                dummy_pix.push((pix.0 + i, pix.1 + j));
-            }
-        }
-    }
     let pixel_update_buf = make_buf(&initial_pixel_data, None, &device);
-    let incoming_pix_buf = make_buf(&dummy_pix, Some(mtl_resource_shared), &device);
-    let all_pix_buf = make_buf(&all_pixels, Some(mtl_resource_shared), &device);
-
-    let mut pixel_vec: Vec<Float3> = Vec::new();
-    for _ in 0..threadgroups_per_grid.width * threadgroups_per_grid.height * 16 {
-        pixel_vec.push(Float3(0.0, 0.0, 0.0));
-    }
-    // let mut pixel_vec : Vec<Float4> = Vec::new();
-    let pixel_data_buf = make_buf(&pixel_vec, Some(mtl_resource_shared), &device);
-
-    let quad: Vec<Float3> = vec![
-        Float3(-1.0, 1.0, 0.0),
-        Float3(1.0, 1.0, 0.0),
-        Float3(-1.0, -1.0, 0.0),
-        Float3(1.0, -1.0, 0.0),
-    ];
-    // let quad_buf = make_buf(&quad, None, &device);
 
     let mirror_buf = make_buf(&mirrors, None, &device);
     let mat_buf = make_buf(&materials, None, &device);
@@ -943,137 +764,17 @@ fn main() {
     let mut keys_pressed = vec![112];
     let mut rot_updated = false;
 
-    // let (client, other_addr) = if let Ok(client) =  UdpSocket::bind("127.0.0.1:8080") {
-    //     (client, "127.0.0.1:8090")
-    // } else {
-    //     let client = UdpSocket::bind("127.0.0.1:8090").expect("Error connecting to either socket");
-    //     (client, "127.0.0.1:8080")
-    // };
-    // client.set_nonblocking(true).unwrap();
-
-    // println!("{}", local_ip_address::local_ip().unwrap());
-    // let client = UdpSocket::bind("0.0.0.0:8080").unwrap_or(UdpSocket::bind((local_ip_address::local_ip().unwrap(), 8080)).unwrap());
-    // let other_addr = "192.168.1.255:8080";
-    // let other_addr = match client.connect("192.168.1.255:8080") {
-    //     Ok(_) => "192.168.1.255:8090",
-    //     Err(_) => {
-    //         client.connect("192.168.1.255:8090").expect("Error connecting to either socket");
-    //         "192.168.1.255:8080"
-    //     },
-    // };
-    let mut client = UdpSocket::bind("0.0.0.0:8080").expect("Error binding client");
-    client.set_broadcast(true).unwrap();
-    // client.set_nonblocking(true).unwrap();
-    client
-        .set_read_timeout(Some(std::time::Duration::new(1, 0)))
-        .unwrap();
-    println!(
-        "My bound socket: {}",
-        client.local_addr().unwrap().to_string()
-    );
-    println!("Searching for other client");
-    let mut buf: [u8; 20] = [0; 20];
-    let mut option_addr = match client.recv_from(&mut buf) {
-        Ok((amt, addr)) if amt == 1 => Some(addr.to_string()),
-        _ => None,
-    };
-
-    // if option_addr.is_none() {
-    //     client = UdpSocket::bind("0.0.0.0:0").expect("Error binding second time");
-    //     client.set_broadcast(true).unwrap();
-    //     client.set_read_timeout(Some(std::time::Duration::new(1, 0))).unwrap();
-    //     option_addr = loop {
-    //         client.send_to(&[0], "255.255.255.255:8080").unwrap();
-    //         match client.recv_from(&mut buf) {
-    //             Ok((amt, _)) if amt != 1 => println!("{amt}"),
-    //             Ok((amt, addr)) if amt == 1 => break Some(addr.to_string()),
-    //             Ok(_) => println!("hm?"),
-    //             _ => println!("Searching..?"),
-    //         }
-    //     };
-    // }
-
-    let other_addr = &option_addr.unwrap_or(String::from("127.0.0.1:8080"));
-    client.send_to(&[0], other_addr).unwrap();
-    client.set_nonblocking(true).unwrap();
-    println!("Found! {other_addr}");
-    println!("Starting (this might take a second!)");
-    //Get a texture from the MetalLayer that we can actually draw to
-    let drawable = layer.next_drawable().expect("Unable to find drawable");
-    let texture = drawable.texture();
-
-    //Create a new command buffer and an encoder to write to it
-    let command_buffer = command_queue.new_command_buffer();
-    let render_pass = new_render_pass_descriptor(texture);
-    let compute_encoder = command_buffer.new_compute_command_encoder();
-
-    compute_encoder.set_compute_pipeline_state(&compute_pipeline_state);
-    compute_encoder.set_buffer(0, Some(&pixel_update_buf), 0);
-    compute_encoder.set_buffer(1, Some(&mirror_buf), 0);
-    compute_encoder.set_buffer(2, Some(&node_buf), 0);
-    compute_encoder.set_buffer(3, Some(&index_buf), 0);
-    compute_encoder.set_bytes(
-        4,
-        size_of::<Uniform>() as u64,
-        vec![uni.clone()].as_ptr() as *const _,
-    );
-    compute_encoder.set_buffer(5, Some(&mat_buf), 0);
-    compute_encoder.set_buffer(6, Some(&emi_buf), 0);
-    compute_encoder.set_buffer(7, Some(&pixel_data_buf), 0);
-    // compute_encoder.set_bytes(6, size_of::<u32>() as u64, mirror_count_data.as_ptr() as *const _);
-    compute_encoder.set_texture(0, Some(&screen_tex));
-    compute_encoder.set_texture(1, Some(&noise_tex));
-    //compute_encoder.set_threadgroup_memory_length(0, 16);
-    compute_encoder.dispatch_thread_groups(threadgroups_per_grid, threads_per_threadgroup);
-    compute_encoder.end_encoding();
-
-    // let texup_encoder = command_buffer.new_compute_command_encoder();
-    // texup_encoder.set_compute_pipeline_state(&tex_update_pipeline);
-    // texup_encoder.set_buffer(0, Some(&all_pix_buf), 0);
-    // texup_encoder.set_buffer(1, Some(&pixel_data_buf), 0);
-    // texup_encoder.set_texture(0, Some(&screen_tex));
-    // texup_encoder.dispatch_threads(threads_per_grid, threads_per_thread_group);
-    // texup_encoder.end_encoding();
-
-    let encoder = command_buffer.new_render_command_encoder(render_pass);
-    encoder.set_render_pipeline_state(&render_pipeline_state);
-    // encoder.set_vertex_buffer(0, Some(&quad_buf), 0);
-    encoder.set_fragment_texture(0, Some(&screen_tex));
-    encoder.draw_primitives(MTLPrimitiveType::TriangleStrip, 0, 4);
-    encoder.end_encoding();
-    command_buffer.present_drawable(&drawable);
-    command_buffer.commit();
-
-    let mut i = 0;
-    // let div = 6;
-    let mut pixel_bytes: &[u8] = &[];
-    let data_width = 16;
-    // let packet_size = threads * data_width / div;
-    let packet_size = 8192;
-    let div = (threads * data_width) / packet_size;
-    println!("packet size: {}", packet_size);
-    println!("threads: {threads}");
-    println!("div: {}", div);
-
-    let mut incoming_pixels: Vec<u8> = Vec::new();
     loop {
         autoreleasepool(|| {
             // println!("{:?}", now.elapsed());
             // now = Instant::now();
 
             if app.windows().is_empty() {
-                // let pixel_bytes : &[(f32, f32, f32)]= unsafe { std::slice::from_raw_parts(pixel_data_buf.contents().cast(), (threadgroups_per_grid.width * threadgroups_per_grid.height * 16) as usize) };
-                // println!("{pixel_bytes:?}");
                 unsafe { app.terminate(None) };
             }
             if unsafe { frame_time.compare(&NSDate::now()) } == NSComparisonResult::Ascending {
                 frame_time = get_next_frame(fps as f64);
                 frames += 1;
-                // println!("{frames}");
-                // if frames % 120 == 0 {
-                //     original_pixels.shuffle(&mut rng);
-                // }
-                incoming_pixels.truncate((threads * data_width * 4) as usize);
                 let pixel_data = random_pixels(
                     threadgroups_per_grid.width,
                     threadgroups_per_grid.height,
@@ -1081,25 +782,6 @@ fn main() {
                     &original_pixels,
                 );
                 copy_to_buf(&pixel_data, &pixel_update_buf);
-
-                let pixel_floats: Vec<f32> = incoming_pixels
-                    .chunks_exact(4)
-                    .map(TryInto::try_into)
-                    .map(Result::unwrap)
-                    .map(f32::from_le_bytes)
-                    .collect();
-                let (all_pixels, updated_pixels): (Vec<Float3>, Vec<(u32, u32)>) = pixel_floats
-                    .chunks_exact(4)
-                    .map(|chunk| {
-                        (
-                            Float3(chunk[0], chunk[1], chunk[2]),
-                            (
-                                (chunk[3].to_bits() >> 16),
-                                (chunk[3].to_bits() as u16) as u32,
-                            ),
-                        )
-                    })
-                    .unzip();
 
                 let prev_cam_center = camera_center.clone();
                 for key in keys_pressed.iter() {
@@ -1197,63 +879,19 @@ fn main() {
                 );
                 compute_encoder.set_buffer(5, Some(&mat_buf), 0);
                 compute_encoder.set_buffer(6, Some(&emi_buf), 0);
-                compute_encoder.set_buffer(7, Some(&pixel_data_buf), 0);
-                // compute_encoder.set_bytes(6, size_of::<u32>() as u64, mirror_count_data.as_ptr() as *const _);
                 compute_encoder.set_texture(0, Some(&screen_tex));
                 compute_encoder.set_texture(1, Some(&noise_tex));
-                //compute_encoder.set_threadgroup_memory_length(0, 16);
                 compute_encoder
                     .dispatch_thread_groups(threadgroups_per_grid, threads_per_threadgroup);
                 compute_encoder.end_encoding();
 
-                if !all_pixels.is_empty() {
-                    // println!("{:?}", all_pixels.len());
-                    copy_to_buf_shared(&updated_pixels, &incoming_pix_buf);
-                    copy_to_buf_shared(&all_pixels, &all_pix_buf);
-                    let texup_encoder = command_buffer.new_compute_command_encoder();
-                    texup_encoder.set_compute_pipeline_state(&tex_update_pipeline);
-                    texup_encoder.set_buffer(0, Some(&incoming_pix_buf), 0);
-                    texup_encoder.set_buffer(1, Some(&all_pix_buf), 0);
-                    texup_encoder.set_texture(0, Some(&screen_tex));
-                    texup_encoder.dispatch_threads(threads_per_grid, threads_per_thread_group);
-                    texup_encoder.end_encoding();
-
-                    incoming_pixels.clear();
-                }
-
                 let encoder = command_buffer.new_render_command_encoder(render_pass);
                 encoder.set_render_pipeline_state(&render_pipeline_state);
-                // encoder.set_vertex_buffer(0, Some(&quad_buf), 0);
                 encoder.set_fragment_texture(0, Some(&screen_tex));
                 encoder.draw_primitives(MTLPrimitiveType::TriangleStrip, 0, 4);
-                // println!("Go!");
                 encoder.end_encoding();
                 command_buffer.present_drawable(&drawable);
                 command_buffer.commit();
-
-                pixel_bytes = unsafe {
-                    std::slice::from_raw_parts(
-                        pixel_data_buf.contents().cast(),
-                        (threads * data_width) as usize,
-                    )
-                };
-            }
-            loop {
-                if pixel_bytes.len() != 0 {
-                    // println!("{}", pixel_bytes.len());
-                    client
-                        .send_to(
-                            &pixel_bytes
-                                [(i * packet_size) as usize..((i + 1) * packet_size) as usize],
-                            other_addr,
-                        )
-                        .expect("Couldn't send pixel_bytes");
-                }
-                i = (i + 1) % div;
-                if i == 0 {
-                    pixel_bytes = &[];
-                    break;
-                }
             }
             loop {
                 let event = unsafe {
@@ -1297,23 +935,6 @@ fn main() {
                     None => break,
                 }
             }
-            let mut incoming_buf: [u8; 10000] = [0; 10000];
-            loop {
-                let amt = match client.recv(&mut incoming_buf) {
-                    Ok(o) => o,
-                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => 0,
-                    Err(_) => {
-                        panic!("Error!")
-                    }
-                };
-                if amt != 0 {
-                    // println!("{amt}");
-                    incoming_pixels.append(&mut incoming_buf[0..amt].to_vec());
-                } else {
-                    break;
-                }
-            }
-            // println!("{}", incoming_pixels.len());
         })
     }
 }
